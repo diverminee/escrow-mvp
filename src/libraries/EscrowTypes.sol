@@ -33,5 +33,6 @@ library EscrowTypes {
         bytes32 tradeDataHash; // Hash of trade documents
         State state;
         uint256 disputeDeadline; // Deadline for current arbiter to act (0 when not disputed)
+        uint256 feeRate; // Fee rate snapshot at creation (basis points / 1000)
     }
 }

@@ -55,7 +55,7 @@ contract TradeInfraEscrow is DisputeEscrow {
     function getUserTierName(
         address _user
     ) external view returns (string memory) {
-        EscrowTypes.UserTier tier = this.getUserTier(_user);
+        EscrowTypes.UserTier tier = getUserTier(_user);
         if (tier == EscrowTypes.UserTier.DIAMOND) return "DIAMOND";
         if (tier == EscrowTypes.UserTier.GOLD) return "GOLD";
         if (tier == EscrowTypes.UserTier.SILVER) return "SILVER";

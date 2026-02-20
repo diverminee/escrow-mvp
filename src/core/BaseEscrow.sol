@@ -32,6 +32,7 @@ abstract contract BaseEscrow is ReentrancyGuard {
 
     // Constants for validation
     uint256 public constant MAX_ESCROW_AMOUNT = 10_000_000e18; // 10M tokens max
+    uint256 public constant MIN_ESCROW_AMOUNT = 1000; // Minimum to prevent dust/zero-fee escrows
 
     // Two-tier escalation timelocks
     uint256 public constant DISPUTE_TIMELOCK = 14 days; // Primary arbiter window
@@ -52,6 +53,8 @@ abstract contract BaseEscrow is ReentrancyGuard {
     error ArbiterCannotBeBuyer();
     error ArbiterCannotBeSeller();
     error ProtocolArbiterCannotBeParty();
+    error ArbiterCannotBeProtocolArbiter();
+    error AmountBelowMinimum();
 
     // ============ Events ============
     event EscrowCreated(
@@ -115,15 +118,25 @@ abstract contract BaseEscrow is ReentrancyGuard {
             revert InvalidAddresses();
         }
         if (_amount == 0) revert InvalidAmount();
+        if (_amount < MIN_ESCROW_AMOUNT) revert AmountBelowMinimum();
         if (_amount > MAX_ESCROW_AMOUNT) revert AmountExceedsMaximum();
         if (msg.sender == _seller) revert SellerCannotBeBuyer();
         if (_arbiter == msg.sender) revert ArbiterCannotBeBuyer();
         if (_arbiter == _seller) revert ArbiterCannotBeSeller();
-
-        uint256 escrowId = nextEscrowId++;
-        // protocolArbiter cannot be a trade party
         if (msg.sender == protocolArbiter || _seller == protocolArbiter)
             revert ProtocolArbiterCannotBeParty();
+        if (_arbiter == protocolArbiter)
+            revert ArbiterCannotBeProtocolArbiter();
+
+        // Snapshot seller's fee rate at creation time
+        EscrowTypes.UserTier sellerTier = ReputationLibrary.getUserTier(
+            successfulTrades[_seller],
+            disputesLost[_seller]
+        );
+        uint256 feeRate = ReputationLibrary.getFeeRate(sellerTier);
+
+        // Increment ID only after all validation passes
+        uint256 escrowId = nextEscrowId++;
 
         escrows[escrowId] = EscrowTypes.EscrowTransaction({
             buyer: msg.sender,
@@ -134,10 +147,11 @@ abstract contract BaseEscrow is ReentrancyGuard {
             tradeId: _tradeId,
             tradeDataHash: _tradeDataHash,
             state: EscrowTypes.State.DRAFT,
-            disputeDeadline: 0
+            disputeDeadline: 0,
+            feeRate: feeRate
         });
 
-        escrowExists[escrowId] = true; // Mark as created
+        escrowExists[escrowId] = true;
         emit EscrowCreated(escrowId, msg.sender, _seller, _amount);
         return escrowId;
     }
@@ -183,12 +197,8 @@ abstract contract BaseEscrow is ReentrancyGuard {
 
         txn.state = EscrowTypes.State.RELEASED;
 
-        // Calculate fee based on seller's tier
-        EscrowTypes.UserTier tier = ReputationLibrary.getUserTier(
-            successfulTrades[_recipient],
-            disputesLost[_recipient]
-        );
-        uint256 feeAmount = ReputationLibrary.calculateFee(txn.amount, tier);
+        // Use fee rate snapshotted at escrow creation
+        uint256 feeAmount = (txn.amount * txn.feeRate) / 1000;
         uint256 recipientAmount = txn.amount - feeAmount;
 
         // Track successful trade for both parties (symmetric)
@@ -218,8 +228,7 @@ abstract contract BaseEscrow is ReentrancyGuard {
 
         txn.state = EscrowTypes.State.REFUNDED;
 
-        // Track successful resolution for buyer (symmetric reputation)
-        successfulTrades[_recipient]++;
+        // No successfulTrades credit: a refund means the trade did not complete
 
         // Transfer full refund (no fee deduction)
         _transferFunds(txn.token, _recipient, txn.amount);
@@ -267,7 +276,7 @@ abstract contract BaseEscrow is ReentrancyGuard {
     /// @return EscrowTypes.UserTier Current tier
     function getUserTier(
         address _user
-    ) external view returns (EscrowTypes.UserTier) {
+    ) public view returns (EscrowTypes.UserTier) {
         return
             ReputationLibrary.getUserTier(
                 successfulTrades[_user],
