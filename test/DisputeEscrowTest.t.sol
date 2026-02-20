@@ -460,6 +460,10 @@ contract DisputeEscrowTest is EscrowTestBase {
         escrow.resolveDispute(id, 2); // buyer wins
 
         (uint256 buyerTrades, , ) = escrow.getUserStats(buyer);
-        assertEq(buyerTrades, 1, "buyer trades");
+        assertEq(
+            buyerTrades,
+            0,
+            "buyer trades: refund should not count as successful trade"
+        );
     }
 }

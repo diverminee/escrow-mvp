@@ -13,6 +13,7 @@ contract DisputeEscrow is BaseEscrow {
     error NotProtocolArbiter();
     error TooManyDisputes();
     error InvalidRuling();
+    error ArbiterDeadlineExpired(); // Primary arbiter acted after deadline
     error DisputeNotExpired(); // Primary arbiter deadline not passed yet
     error EscalationNotExpired(); // Protocol arbiter deadline not passed yet
     error NotEscalated(); // Escrow is not in ESCALATED state
@@ -76,11 +77,11 @@ contract DisputeEscrow is BaseEscrow {
         if (disputesInitiated[initiator] >= 10) revert TooManyDisputes();
 
         // Check loss rate: >50% loss rate with 3+ losses
+        // Also blocks users who lost 3+ disputes but never initiated any (defendant losses)
         uint256 losses = disputesLost[initiator];
         if (losses >= 3) {
             uint256 totalDisputes = disputesInitiated[initiator];
-            // Safety: only check rate if user has initiated disputes
-            if (totalDisputes > 0 && (losses * 100) / totalDisputes > 50) {
+            if (totalDisputes == 0 || (losses * 100) / totalDisputes > 50) {
                 revert TooManyDisputes();
             }
         }
@@ -107,6 +108,8 @@ contract DisputeEscrow is BaseEscrow {
     ) external onlyArbiter(_escrowId) nonReentrant {
         EscrowTypes.EscrowTransaction storage txn = escrows[_escrowId];
         if (txn.state != EscrowTypes.State.DISPUTED) revert InvalidState();
+        if (block.timestamp > txn.disputeDeadline)
+            revert ArbiterDeadlineExpired();
 
         if (_ruling == 1) {
             // Ruling in favor of seller
@@ -192,7 +195,7 @@ contract DisputeEscrow is BaseEscrow {
 
         uint256 losses = disputesLost[_user];
         if (losses >= 3) {
-            if (initiated > 0 && (losses * 100) / initiated > 50) return false;
+            if (initiated == 0 || (losses * 100) / initiated > 50) return false;
         }
 
         return true;
