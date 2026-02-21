@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity 0.8.24;
 
 import {EscrowTypes} from "../libraries/EscrowTypes.sol";
 import {DisputeEscrow} from "./DisputeEscrow.sol";
@@ -12,11 +12,9 @@ contract TradeInfraEscrow is DisputeEscrow {
     error OracleVerificationFailed();
 
     // ============ Constructor ============
-    constructor(
-        address _oracleAddress,
-        address _feeRecipient,
-        address _protocolArbiter
-    ) DisputeEscrow(_oracleAddress, _feeRecipient, _protocolArbiter) {}
+    constructor(address _oracleAddress, address _feeRecipient, address _protocolArbiter)
+        DisputeEscrow(_oracleAddress, _feeRecipient, _protocolArbiter)
+    {}
 
     // ============ Events ============
     event DeliveryConfirmed(uint256 indexed escrowId);
@@ -52,9 +50,7 @@ contract TradeInfraEscrow is DisputeEscrow {
     /// @notice Get user's tier name as string
     /// @param _user Address of the user
     /// @return string Tier name (BRONZE, SILVER, GOLD, DIAMOND)
-    function getUserTierName(
-        address _user
-    ) external view returns (string memory) {
+    function getUserTierName(address _user) external view returns (string memory) {
         EscrowTypes.UserTier tier = getUserTier(_user);
         if (tier == EscrowTypes.UserTier.DIAMOND) return "DIAMOND";
         if (tier == EscrowTypes.UserTier.GOLD) return "GOLD";

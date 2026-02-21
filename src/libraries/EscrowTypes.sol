@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity 0.8.24;
 
 /// @title Escrow Types Library
 /// @notice Shared types and enums for escrow system
@@ -12,6 +12,7 @@ library EscrowTypes {
         REFUNDED,
         DISPUTED,
         ESCALATED // Escalated to protocol arbiter after primary arbiter timeout
+
     }
 
     enum UserTier {

@@ -6,6 +6,10 @@ remappings = [
     "@openzeppelin/contracts=lib/openzeppelin-contracts/contracts",
     "@openzeppelin/=node_modules/@openzeppelin/",
 ]
+solc = "0.8.24"
+evm_version = "paris"
+optimizer = true
+optimizer_runs = 200
 # Some deploy tests use vm.setEnv which writes to the shared OS process env.
 # Running tests serially prevents race conditions between those tests.
 jobs = 1

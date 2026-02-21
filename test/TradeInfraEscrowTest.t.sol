@@ -140,25 +140,14 @@ contract TradeInfraEscrowTest is EscrowTestBase {
     // ═══════════════════════════════════════════════════════════════════
 
     // Helper: complete N trades for a user to reach a tier
-    function _completeTrades(
-        address _buyer,
-        address _seller,
-        uint256 n
-    ) internal {
+    function _completeTrades(address _buyer, address _seller, uint256 n) internal {
         // KYC-approve these addresses (test contract is the escrow owner)
         escrow.setKYCStatus(_buyer, true);
         escrow.setKYCStatus(_seller, true);
         for (uint256 i = 0; i < n; i++) {
             vm.deal(_buyer, ESCROW_AMOUNT + 1 ether);
             vm.prank(_buyer);
-            uint256 id = escrow.createEscrow(
-                _seller,
-                arbiter,
-                address(0),
-                ESCROW_AMOUNT,
-                i + 1000,
-                TRADE_DATA_HASH
-            );
+            uint256 id = escrow.createEscrow(_seller, arbiter, address(0), ESCROW_AMOUNT, i + 1000, TRADE_DATA_HASH);
             vm.prank(_buyer);
             escrow.fund{value: ESCROW_AMOUNT}(id);
             vm.prank(_buyer);
@@ -172,10 +161,7 @@ contract TradeInfraEscrowTest is EscrowTestBase {
         // Complete 5 trades → seller reaches SILVER (5 successes)
         _completeTrades(b, s, 5);
 
-        assertEq(
-            uint8(escrow.getUserTier(s)),
-            uint8(EscrowTypes.UserTier.SILVER)
-        );
+        assertEq(uint8(escrow.getUserTier(s)), uint8(EscrowTypes.UserTier.SILVER));
         assertEq(escrow.getUserFeeRate(s), 9); // 0.9%
     }
 
@@ -184,10 +170,7 @@ contract TradeInfraEscrowTest is EscrowTestBase {
         address s = makeAddr("goldSeller");
         _completeTrades(b, s, 20);
 
-        assertEq(
-            uint8(escrow.getUserTier(s)),
-            uint8(EscrowTypes.UserTier.GOLD)
-        );
+        assertEq(uint8(escrow.getUserTier(s)), uint8(EscrowTypes.UserTier.GOLD));
         assertEq(escrow.getUserFeeRate(s), 8); // 0.8%
     }
 
@@ -196,10 +179,7 @@ contract TradeInfraEscrowTest is EscrowTestBase {
         address s = makeAddr("diamondSeller");
         _completeTrades(b, s, 50);
 
-        assertEq(
-            uint8(escrow.getUserTier(s)),
-            uint8(EscrowTypes.UserTier.DIAMOND)
-        );
+        assertEq(uint8(escrow.getUserTier(s)), uint8(EscrowTypes.UserTier.DIAMOND));
         assertEq(escrow.getUserFeeRate(s), 7); // 0.7%
     }
 
@@ -214,14 +194,7 @@ contract TradeInfraEscrowTest is EscrowTestBase {
         for (uint256 i = 0; i < 2; i++) {
             vm.deal(b, ESCROW_AMOUNT + 1 ether);
             vm.prank(b);
-            uint256 id = escrow.createEscrow(
-                s,
-                arbiter,
-                address(0),
-                ESCROW_AMOUNT,
-                500 + i,
-                TRADE_DATA_HASH
-            );
+            uint256 id = escrow.createEscrow(s, arbiter, address(0), ESCROW_AMOUNT, 500 + i, TRADE_DATA_HASH);
             vm.prank(b);
             escrow.fund{value: ESCROW_AMOUNT}(id);
             vm.prank(b);
@@ -232,10 +205,7 @@ contract TradeInfraEscrowTest is EscrowTestBase {
         }
 
         // Seller has 20+ successes but 2 losses → GOLD requires ≤1 loss → drops to SILVER
-        assertEq(
-            uint8(escrow.getUserTier(s)),
-            uint8(EscrowTypes.UserTier.SILVER)
-        );
+        assertEq(uint8(escrow.getUserTier(s)), uint8(EscrowTypes.UserTier.SILVER));
     }
 
     function test_FeeApplied_SilverTier() public {
@@ -247,14 +217,7 @@ contract TradeInfraEscrowTest is EscrowTestBase {
         // Now do one more escrow and confirm delivery
         vm.deal(b, ESCROW_AMOUNT + 1 ether);
         vm.prank(b);
-        uint256 id = escrow.createEscrow(
-            s,
-            arbiter,
-            address(0),
-            ESCROW_AMOUNT,
-            9000,
-            TRADE_DATA_HASH
-        );
+        uint256 id = escrow.createEscrow(s, arbiter, address(0), ESCROW_AMOUNT, 9000, TRADE_DATA_HASH);
         vm.prank(b);
         escrow.fund{value: ESCROW_AMOUNT}(id);
 

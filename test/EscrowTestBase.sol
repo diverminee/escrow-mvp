@@ -32,11 +32,7 @@ abstract contract EscrowTestBase is Test {
     function setUp() public virtual {
         oracle = new MockOracle();
         token = new MockERC20("Test Token", "TST");
-        escrow = new TradeInfraEscrow(
-            address(oracle),
-            feeRecipient,
-            protocolArb
-        );
+        escrow = new TradeInfraEscrow(address(oracle), feeRecipient, protocolArb);
 
         // KYC-approve the standard test actors so createEscrow works.
         // The test contract is the escrow owner (msg.sender at deploy time).
@@ -54,27 +50,13 @@ abstract contract EscrowTestBase is Test {
     /// Create an ETH escrow and return its id (DRAFT state)
     function _createETHEscrow() internal returns (uint256 id) {
         vm.prank(buyer);
-        id = escrow.createEscrow(
-            seller,
-            arbiter,
-            address(0),
-            ESCROW_AMOUNT,
-            TRADE_ID,
-            TRADE_DATA_HASH
-        );
+        id = escrow.createEscrow(seller, arbiter, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH);
     }
 
     /// Create an ERC20 escrow and return its id (DRAFT state)
     function _createERC20Escrow() internal returns (uint256 id) {
         vm.prank(buyer);
-        id = escrow.createEscrow(
-            seller,
-            arbiter,
-            address(token),
-            ESCROW_AMOUNT,
-            TRADE_ID,
-            TRADE_DATA_HASH
-        );
+        id = escrow.createEscrow(seller, arbiter, address(token), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH);
     }
 
     /// Create and fund an ETH escrow (FUNDED state)
@@ -109,10 +91,7 @@ abstract contract EscrowTestBase is Test {
     }
 
     /// Convenience: assert escrow state
-    function _assertState(
-        uint256 id,
-        EscrowTypes.State expected
-    ) internal view {
+    function _assertState(uint256 id, EscrowTypes.State expected) internal view {
         EscrowTypes.EscrowTransaction memory txn = escrow.getEscrow(id);
         assertEq(uint8(txn.state), uint8(expected), "unexpected escrow state");
     }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity 0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -48,7 +48,6 @@ abstract contract BaseEscrow is ReentrancyGuard {
     // ============ Errors ============
     error InvalidAddresses();
     error InvalidAmount();
-    error DivisionByZero();
     error EscrowNotFound();
     error AmountExceedsMaximum();
     error InvalidState();
@@ -66,24 +65,10 @@ abstract contract BaseEscrow is ReentrancyGuard {
     error NotOwner();
 
     // ============ Events ============
-    event EscrowCreated(
-        uint256 indexed escrowId,
-        address indexed buyer,
-        address indexed seller,
-        uint256 amount
-    );
+    event EscrowCreated(uint256 indexed escrowId, address indexed buyer, address indexed seller, uint256 amount);
     event Funded(uint256 indexed escrowId, uint256 amount);
-    event Released(
-        uint256 indexed escrowId,
-        address indexed recipient,
-        uint256 amount,
-        uint256 fee
-    );
-    event Refunded(
-        uint256 indexed escrowId,
-        address indexed recipient,
-        uint256 amount
-    );
+    event Released(uint256 indexed escrowId, address indexed recipient, uint256 amount, uint256 fee);
+    event Refunded(uint256 indexed escrowId, address indexed recipient, uint256 amount);
     event KYCStatusUpdated(address indexed user, bool approved);
     event ApprovedTokenAdded(address indexed token);
     event ApprovedTokenRemoved(address indexed token);
@@ -99,16 +84,10 @@ abstract contract BaseEscrow is ReentrancyGuard {
     /// @notice Initialize contract with oracle and fee recipient
     /// @param _oracleAddress Address of the trade oracle
     /// @param _feeRecipient Address to receive transaction fees
-    constructor(
-        address _oracleAddress,
-        address _feeRecipient,
-        address _protocolArbiter
-    ) {
-        if (
-            _oracleAddress == address(0) ||
-            _feeRecipient == address(0) ||
-            _protocolArbiter == address(0)
-        ) revert InvalidAddresses();
+    constructor(address _oracleAddress, address _feeRecipient, address _protocolArbiter) {
+        if (_oracleAddress == address(0) || _feeRecipient == address(0) || _protocolArbiter == address(0)) {
+            revert InvalidAddresses();
+        }
         if (_protocolArbiter == _feeRecipient) revert InvalidAddresses();
         oracle = ITradeOracle(_oracleAddress);
         feeRecipient = _feeRecipient;
@@ -188,16 +167,16 @@ abstract contract BaseEscrow is ReentrancyGuard {
         if (msg.sender == _seller) revert SellerCannotBeBuyer();
         if (_arbiter == msg.sender) revert ArbiterCannotBeBuyer();
         if (_arbiter == _seller) revert ArbiterCannotBeSeller();
-        if (msg.sender == protocolArbiter || _seller == protocolArbiter)
+        if (msg.sender == protocolArbiter || _seller == protocolArbiter) {
             revert ProtocolArbiterCannotBeParty();
-        if (_arbiter == protocolArbiter)
+        }
+        if (_arbiter == protocolArbiter) {
             revert ArbiterCannotBeProtocolArbiter();
+        }
 
         // Snapshot seller's fee rate at creation time
-        EscrowTypes.UserTier sellerTier = ReputationLibrary.getUserTier(
-            successfulTrades[_seller],
-            disputesLost[_seller]
-        );
+        EscrowTypes.UserTier sellerTier =
+            ReputationLibrary.getUserTier(successfulTrades[_seller], disputesLost[_seller]);
         uint256 feeRate = ReputationLibrary.getFeeRate(sellerTier);
 
         // Increment ID only after all validation passes
@@ -233,11 +212,7 @@ abstract contract BaseEscrow is ReentrancyGuard {
             if (msg.value != txn.amount) revert IncorrectETHAmount();
         } else {
             if (msg.value > 0) revert NoETHForERC20Escrow();
-            IERC20(txn.token).safeTransferFrom(
-                msg.sender,
-                address(this),
-                txn.amount
-            );
+            IERC20(txn.token).safeTransferFrom(msg.sender, address(this), txn.amount);
         }
 
         txn.state = EscrowTypes.State.FUNDED;
@@ -253,9 +228,8 @@ abstract contract BaseEscrow is ReentrancyGuard {
         EscrowTypes.EscrowTransaction storage txn = escrows[_escrowId];
         // Accept FUNDED, DISPUTED, or ESCALATED (protocol arbiter resolution)
         if (
-            txn.state != EscrowTypes.State.FUNDED &&
-            txn.state != EscrowTypes.State.DISPUTED &&
-            txn.state != EscrowTypes.State.ESCALATED
+            txn.state != EscrowTypes.State.FUNDED && txn.state != EscrowTypes.State.DISPUTED
+                && txn.state != EscrowTypes.State.ESCALATED
         ) {
             revert InvalidState();
         }
@@ -284,9 +258,8 @@ abstract contract BaseEscrow is ReentrancyGuard {
         EscrowTypes.EscrowTransaction storage txn = escrows[_escrowId];
         // Accept FUNDED, DISPUTED, or ESCALATED (timeout refund)
         if (
-            txn.state != EscrowTypes.State.FUNDED &&
-            txn.state != EscrowTypes.State.DISPUTED &&
-            txn.state != EscrowTypes.State.ESCALATED
+            txn.state != EscrowTypes.State.FUNDED && txn.state != EscrowTypes.State.DISPUTED
+                && txn.state != EscrowTypes.State.ESCALATED
         ) {
             revert InvalidState();
         }
@@ -305,13 +278,9 @@ abstract contract BaseEscrow is ReentrancyGuard {
     /// @param token Address of token (address(0) for ETH)
     /// @param recipient Address to receive funds
     /// @param amount Amount to transfer
-    function _transferFunds(
-        address token,
-        address recipient,
-        uint256 amount
-    ) internal {
+    function _transferFunds(address token, address recipient, uint256 amount) internal {
         if (token == address(0)) {
-            (bool sent, ) = payable(recipient).call{value: amount}("");
+            (bool sent,) = payable(recipient).call{value: amount}("");
             if (!sent) revert ETHTransferFailed();
         } else {
             IERC20(token).safeTransfer(recipient, amount);
@@ -323,9 +292,7 @@ abstract contract BaseEscrow is ReentrancyGuard {
     /// @notice Get full escrow transaction details
     /// @param _escrowId ID of the escrow
     /// @return EscrowTransaction struct with all details
-    function getEscrow(
-        uint256 _escrowId
-    ) external view returns (EscrowTypes.EscrowTransaction memory) {
+    function getEscrow(uint256 _escrowId) external view returns (EscrowTypes.EscrowTransaction memory) {
         if (!escrowExists[_escrowId]) revert EscrowNotFound();
         return escrows[_escrowId];
     }
@@ -339,24 +306,15 @@ abstract contract BaseEscrow is ReentrancyGuard {
     /// @notice Get user's current tier
     /// @param _user Address of the user
     /// @return EscrowTypes.UserTier Current tier
-    function getUserTier(
-        address _user
-    ) public view returns (EscrowTypes.UserTier) {
-        return
-            ReputationLibrary.getUserTier(
-                successfulTrades[_user],
-                disputesLost[_user]
-            );
+    function getUserTier(address _user) public view returns (EscrowTypes.UserTier) {
+        return ReputationLibrary.getUserTier(successfulTrades[_user], disputesLost[_user]);
     }
 
     /// @notice Get user's current fee rate
     /// @param _user Address of the user
     /// @return uint256 Fee in basis points (e.g., 12 = 1.2%)
     function getUserFeeRate(address _user) external view returns (uint256) {
-        EscrowTypes.UserTier tier = ReputationLibrary.getUserTier(
-            successfulTrades[_user],
-            disputesLost[_user]
-        );
+        EscrowTypes.UserTier tier = ReputationLibrary.getUserTier(successfulTrades[_user], disputesLost[_user]);
         return ReputationLibrary.getFeeRate(tier);
     }
 
@@ -365,13 +323,7 @@ abstract contract BaseEscrow is ReentrancyGuard {
     /// @return trades Number of successful trades
     /// @return initiated Number of disputes initiated
     /// @return lost Number of disputes lost
-    function getUserStats(
-        address _user
-    ) external view returns (uint256 trades, uint256 initiated, uint256 lost) {
-        return (
-            successfulTrades[_user],
-            disputesInitiated[_user],
-            disputesLost[_user]
-        );
+    function getUserStats(address _user) external view returns (uint256 trades, uint256 initiated, uint256 lost) {
+        return (successfulTrades[_user], disputesInitiated[_user], disputesLost[_user]);
     }
 }

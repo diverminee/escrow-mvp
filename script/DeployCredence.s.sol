@@ -19,9 +19,7 @@ contract DeployCredence is Script {
         // ── Configuration ──────────────────────────────────────
         uint256 deployerPrivateKey = vm.envOr(
             "PRIVATE_KEY",
-            uint256(
-                0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-            ) // Anvil default key #0
+            uint256(0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80) // Anvil default key #0
         );
 
         address deployerAddress = vm.addr(deployerPrivateKey);
@@ -53,11 +51,7 @@ contract DeployCredence is Script {
 
         // 2. Deploy TradeInfraEscrow (the main contract)
         //    msg.sender (deployer) becomes owner of the escrow contract
-        TradeInfraEscrow escrow = new TradeInfraEscrow(
-            address(oracle),
-            feeRecipient,
-            protocolArbiter
-        );
+        TradeInfraEscrow escrow = new TradeInfraEscrow(address(oracle), feeRecipient, protocolArbiter);
         console.log("TradeInfraEscrow deployed at:", address(escrow));
 
         // 3. Seed the recommended token list: ETH (address(0)), USDC, USDT

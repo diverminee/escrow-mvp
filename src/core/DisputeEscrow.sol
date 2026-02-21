@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity 0.8.24;
 
 import {EscrowTypes} from "../libraries/EscrowTypes.sol";
 import {BaseEscrow} from "./BaseEscrow.sol";
@@ -18,31 +18,23 @@ contract DisputeEscrow is BaseEscrow {
     error EscalationNotExpired(); // Protocol arbiter deadline not passed yet
     error NotEscalated(); // Escrow is not in ESCALATED state
 
+    // ============ Dispute Rate-Limiting Constants ============
+    uint256 internal constant MAX_DISPUTE_INITIATIONS = 10;
+    uint256 internal constant MIN_LOSSES_FOR_RATE_CHECK = 3;
+    uint256 internal constant MAX_LOSS_RATE_PERCENT = 50;
+    uint256 internal constant PERCENTAGE_BASE = 100;
+
     // ============ Constructor ============
-    constructor(
-        address _oracleAddress,
-        address _feeRecipient,
-        address _protocolArbiter
-    ) BaseEscrow(_oracleAddress, _feeRecipient, _protocolArbiter) {}
+    constructor(address _oracleAddress, address _feeRecipient, address _protocolArbiter)
+        BaseEscrow(_oracleAddress, _feeRecipient, _protocolArbiter)
+    {}
 
     // ============ Events ============
-    event DisputeRaised(
-        uint256 indexed escrowId,
-        address indexed initiator,
-        uint256 deadline
-    );
+    event DisputeRaised(uint256 indexed escrowId, address indexed initiator, uint256 deadline);
     event DisputeResolved(uint256 indexed escrowId, uint8 indexed ruling);
-    event DisputeEscalated(
-        uint256 indexed escrowId,
-        address indexed escalatedBy,
-        uint256 newDeadline
-    );
+    event DisputeEscalated(uint256 indexed escrowId, address indexed escalatedBy, uint256 newDeadline);
     event EscalationResolved(uint256 indexed escrowId, uint8 indexed ruling);
-    event TimeoutClaimed(
-        uint256 indexed escrowId,
-        address indexed claimedBy,
-        address indexed refundedTo
-    );
+    event TimeoutClaimed(uint256 indexed escrowId, address indexed claimedBy, address indexed refundedTo);
 
     // ============ Modifiers ============
 
@@ -50,8 +42,9 @@ contract DisputeEscrow is BaseEscrow {
     modifier onlyParty(uint256 _escrowId) {
         if (!escrowExists[_escrowId]) revert EscrowNotFound();
         EscrowTypes.EscrowTransaction memory txn = escrows[_escrowId];
-        if (msg.sender != txn.buyer && msg.sender != txn.seller)
+        if (msg.sender != txn.buyer && msg.sender != txn.seller) {
             revert NotAParty();
+        }
         _;
     }
 
@@ -64,24 +57,22 @@ contract DisputeEscrow is BaseEscrow {
 
     /// @notice Raise a dispute on the escrow transaction
     /// @param _escrowId ID of the escrow
-    function raiseDispute(
-        uint256 _escrowId
-    ) external onlyParty(_escrowId) nonReentrant {
+    function raiseDispute(uint256 _escrowId) external nonReentrant onlyParty(_escrowId) {
         EscrowTypes.EscrowTransaction storage txn = escrows[_escrowId];
         if (txn.state != EscrowTypes.State.FUNDED) revert InvalidState();
 
         address initiator = msg.sender;
 
         // Check for excessive disputes (prevent abuse)
-        // Hard limit: 10+ disputes initiated
-        if (disputesInitiated[initiator] >= 10) revert TooManyDisputes();
+        // Hard limit: MAX_DISPUTE_INITIATIONS disputes initiated
+        if (disputesInitiated[initiator] >= MAX_DISPUTE_INITIATIONS) revert TooManyDisputes();
 
-        // Check loss rate: >50% loss rate with 3+ losses
-        // Also blocks users who lost 3+ disputes but never initiated any (defendant losses)
+        // Check loss rate: >50% loss rate with MIN_LOSSES_FOR_RATE_CHECK+ losses
+        // Also blocks users who lost MIN_LOSSES_FOR_RATE_CHECK+ disputes but never initiated any (defendant losses)
         uint256 losses = disputesLost[initiator];
-        if (losses >= 3) {
+        if (losses >= MIN_LOSSES_FOR_RATE_CHECK) {
             uint256 totalDisputes = disputesInitiated[initiator];
-            if (totalDisputes == 0 || (losses * 100) / totalDisputes > 50) {
+            if (totalDisputes == 0 || (losses * PERCENTAGE_BASE) / totalDisputes > MAX_LOSS_RATE_PERCENT) {
                 revert TooManyDisputes();
             }
         }
@@ -92,24 +83,18 @@ contract DisputeEscrow is BaseEscrow {
         // Set primary arbiter deadline (14 days)
         escrows[_escrowId].disputeDeadline = block.timestamp + DISPUTE_TIMELOCK;
         escrows[_escrowId].state = EscrowTypes.State.DISPUTED;
-        emit DisputeRaised(
-            _escrowId,
-            initiator,
-            escrows[_escrowId].disputeDeadline
-        );
+        emit DisputeRaised(_escrowId, initiator, escrows[_escrowId].disputeDeadline);
     }
 
     /// @notice Resolve dispute with arbiter ruling
     /// @param _escrowId ID of the escrow
     /// @param _ruling Ruling (1 = release to seller, 2 = refund to buyer)
-    function resolveDispute(
-        uint256 _escrowId,
-        uint8 _ruling
-    ) external onlyArbiter(_escrowId) nonReentrant {
+    function resolveDispute(uint256 _escrowId, uint8 _ruling) external nonReentrant onlyArbiter(_escrowId) {
         EscrowTypes.EscrowTransaction storage txn = escrows[_escrowId];
         if (txn.state != EscrowTypes.State.DISPUTED) revert InvalidState();
-        if (block.timestamp > txn.disputeDeadline)
+        if (block.timestamp > txn.disputeDeadline) {
             revert ArbiterDeadlineExpired();
+        }
 
         if (_ruling == 1) {
             // Ruling in favor of seller
@@ -129,9 +114,7 @@ contract DisputeEscrow is BaseEscrow {
     /// @notice Escalate to protocol arbiter after primary arbiter misses 14-day deadline
     /// @dev Callable by either buyer or seller once DISPUTE_TIMELOCK has passed
     /// @param _escrowId ID of the escrow
-    function escalateToProtocol(
-        uint256 _escrowId
-    ) external onlyParty(_escrowId) nonReentrant {
+    function escalateToProtocol(uint256 _escrowId) external nonReentrant onlyParty(_escrowId) {
         EscrowTypes.EscrowTransaction storage txn = escrows[_escrowId];
         if (txn.state != EscrowTypes.State.DISPUTED) revert InvalidState();
         if (block.timestamp < txn.disputeDeadline) revert DisputeNotExpired();
@@ -146,10 +129,7 @@ contract DisputeEscrow is BaseEscrow {
     /// @notice Protocol arbiter resolves an escalated dispute
     /// @param _escrowId ID of the escrow
     /// @param _ruling Ruling (1 = release to seller, 2 = refund to buyer)
-    function resolveEscalation(
-        uint256 _escrowId,
-        uint8 _ruling
-    ) external nonReentrant {
+    function resolveEscalation(uint256 _escrowId, uint8 _ruling) external nonReentrant {
         if (msg.sender != protocolArbiter) revert NotProtocolArbiter();
         if (!escrowExists[_escrowId]) revert EscrowNotFound();
         EscrowTypes.EscrowTransaction storage txn = escrows[_escrowId];
@@ -175,8 +155,9 @@ contract DisputeEscrow is BaseEscrow {
         if (!escrowExists[_escrowId]) revert EscrowNotFound();
         EscrowTypes.EscrowTransaction storage txn = escrows[_escrowId];
         if (txn.state != EscrowTypes.State.ESCALATED) revert NotEscalated();
-        if (block.timestamp < txn.disputeDeadline)
+        if (block.timestamp < txn.disputeDeadline) {
             revert EscalationNotExpired();
+        }
 
         address buyer = txn.buyer;
         // Final safety net: always refund to buyer (Letter of Credit principle:
@@ -191,11 +172,11 @@ contract DisputeEscrow is BaseEscrow {
     /// @return bool True if user can raise disputes
     function canRaiseDispute(address _user) external view returns (bool) {
         uint256 initiated = disputesInitiated[_user];
-        if (initiated >= 10) return false;
+        if (initiated >= MAX_DISPUTE_INITIATIONS) return false;
 
         uint256 losses = disputesLost[_user];
-        if (losses >= 3) {
-            if (initiated == 0 || (losses * 100) / initiated > 50) return false;
+        if (losses >= MIN_LOSSES_FOR_RATE_CHECK) {
+            if (initiated == 0 || (losses * PERCENTAGE_BASE) / initiated > MAX_LOSS_RATE_PERCENT) return false;
         }
 
         return true;

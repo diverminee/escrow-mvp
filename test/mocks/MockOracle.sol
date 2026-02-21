@@ -11,9 +11,7 @@ contract MockOracle is ITradeOracle {
         shouldVerify = _result;
     }
 
-    function verifyTradeData(
-        bytes32 /*tradeDataHash*/
-    ) external view returns (bool) {
+    function verifyTradeData(bytes32 /*tradeDataHash*/ ) external view returns (bool) {
         return shouldVerify;
     }
 }

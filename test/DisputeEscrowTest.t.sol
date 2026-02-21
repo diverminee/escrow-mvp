@@ -39,7 +39,7 @@ contract DisputeEscrowTest is EscrowTestBase {
         uint256 id = _fundedETHEscrow();
         vm.prank(buyer);
         escrow.raiseDispute(id);
-        (, uint256 initiated, ) = escrow.getUserStats(buyer);
+        (, uint256 initiated,) = escrow.getUserStats(buyer);
         assertEq(initiated, 1);
     }
 
@@ -85,14 +85,7 @@ contract DisputeEscrowTest is EscrowTestBase {
         // Fund and raise dispute for 10 escrows (buyer initiates all 10)
         for (uint256 i = 0; i < 10; i++) {
             vm.prank(buyer);
-            uint256 id = escrow.createEscrow(
-                sellers[i],
-                arbiter,
-                address(0),
-                ESCROW_AMOUNT,
-                i,
-                TRADE_DATA_HASH
-            );
+            uint256 id = escrow.createEscrow(sellers[i], arbiter, address(0), ESCROW_AMOUNT, i, TRADE_DATA_HASH);
             vm.prank(buyer);
             escrow.fund{value: ESCROW_AMOUNT}(id);
             vm.prank(buyer);
@@ -102,14 +95,7 @@ contract DisputeEscrowTest is EscrowTestBase {
         address extraSeller = makeAddr("extraSeller");
         escrow.setKYCStatus(extraSeller, true);
         vm.prank(buyer);
-        uint256 id11 = escrow.createEscrow(
-            extraSeller,
-            arbiter,
-            address(0),
-            ESCROW_AMOUNT,
-            99,
-            TRADE_DATA_HASH
-        );
+        uint256 id11 = escrow.createEscrow(extraSeller, arbiter, address(0), ESCROW_AMOUNT, 99, TRADE_DATA_HASH);
         vm.prank(buyer);
         escrow.fund{value: ESCROW_AMOUNT}(id11);
 
@@ -126,14 +112,7 @@ contract DisputeEscrowTest is EscrowTestBase {
             address s = makeAddr(string(abi.encodePacked("s", i)));
             escrow.setKYCStatus(s, true); // KYC the generated seller
             vm.prank(buyer);
-            uint256 id = escrow.createEscrow(
-                s,
-                arbiter,
-                address(0),
-                ESCROW_AMOUNT,
-                i,
-                TRADE_DATA_HASH
-            );
+            uint256 id = escrow.createEscrow(s, arbiter, address(0), ESCROW_AMOUNT, i, TRADE_DATA_HASH);
             vm.prank(buyer);
             escrow.fund{value: ESCROW_AMOUNT}(id);
             vm.prank(buyer);
@@ -147,14 +126,7 @@ contract DisputeEscrowTest is EscrowTestBase {
         address s4 = makeAddr("s4");
         escrow.setKYCStatus(s4, true);
         vm.prank(buyer);
-        uint256 id4 = escrow.createEscrow(
-            s4,
-            arbiter,
-            address(0),
-            ESCROW_AMOUNT,
-            10,
-            TRADE_DATA_HASH
-        );
+        uint256 id4 = escrow.createEscrow(s4, arbiter, address(0), ESCROW_AMOUNT, 10, TRADE_DATA_HASH);
         vm.prank(buyer);
         escrow.fund{value: ESCROW_AMOUNT}(id4);
 
@@ -172,14 +144,7 @@ contract DisputeEscrowTest is EscrowTestBase {
             address s = makeAddr(string(abi.encodePacked("sl", i)));
             escrow.setKYCStatus(s, true); // KYC the generated seller
             vm.prank(buyer);
-            uint256 id = escrow.createEscrow(
-                s,
-                arbiter,
-                address(0),
-                ESCROW_AMOUNT,
-                i,
-                TRADE_DATA_HASH
-            );
+            uint256 id = escrow.createEscrow(s, arbiter, address(0), ESCROW_AMOUNT, i, TRADE_DATA_HASH);
             vm.prank(buyer);
             escrow.fund{value: ESCROW_AMOUNT}(id);
             vm.prank(buyer);
@@ -210,7 +175,7 @@ contract DisputeEscrowTest is EscrowTestBase {
         uint256 id = _disputedETHEscrow();
         vm.prank(arbiter);
         escrow.resolveDispute(id, 1);
-        (, , uint256 lost) = escrow.getUserStats(buyer);
+        (,, uint256 lost) = escrow.getUserStats(buyer);
         assertEq(lost, 1);
     }
 
@@ -229,7 +194,7 @@ contract DisputeEscrowTest is EscrowTestBase {
         uint256 id = _disputedETHEscrow();
         vm.prank(arbiter);
         escrow.resolveDispute(id, 2);
-        (, , uint256 lost) = escrow.getUserStats(seller);
+        (,, uint256 lost) = escrow.getUserStats(seller);
         assertEq(lost, 1);
     }
 
@@ -303,11 +268,7 @@ contract DisputeEscrowTest is EscrowTestBase {
         uint256 id = _disputedETHEscrow();
         vm.warp(block.timestamp + DISPUTE_TIMELOCK + 1);
         vm.expectEmit(true, true, false, false);
-        emit DisputeEscrow.DisputeEscalated(
-            id,
-            buyer,
-            block.timestamp + ESCALATION_TIMELOCK
-        );
+        emit DisputeEscrow.DisputeEscalated(id, buyer, block.timestamp + ESCALATION_TIMELOCK);
         vm.prank(buyer);
         escrow.escalateToProtocol(id);
     }
@@ -453,8 +414,8 @@ contract DisputeEscrowTest is EscrowTestBase {
         vm.prank(arbiter);
         escrow.resolveDispute(id, 1); // seller wins
 
-        (uint256 sellerTrades, , ) = escrow.getUserStats(seller);
-        (uint256 buyerTrades, , ) = escrow.getUserStats(buyer);
+        (uint256 sellerTrades,,) = escrow.getUserStats(seller);
+        (uint256 buyerTrades,,) = escrow.getUserStats(buyer);
         assertEq(sellerTrades, 1, "seller trades");
         assertEq(buyerTrades, 1, "buyer trades");
     }
@@ -464,11 +425,7 @@ contract DisputeEscrowTest is EscrowTestBase {
         vm.prank(arbiter);
         escrow.resolveDispute(id, 2); // buyer wins
 
-        (uint256 buyerTrades, , ) = escrow.getUserStats(buyer);
-        assertEq(
-            buyerTrades,
-            0,
-            "buyer trades: refund should not count as successful trade"
-        );
+        (uint256 buyerTrades,,) = escrow.getUserStats(buyer);
+        assertEq(buyerTrades, 0, "buyer trades: refund should not count as successful trade");
     }
 }

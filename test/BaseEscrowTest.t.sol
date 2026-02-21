@@ -44,14 +44,7 @@ contract BaseEscrowTest is EscrowTestBase {
 
     function test_CreateEscrow_ETH() public {
         vm.prank(buyer);
-        uint256 id = escrow.createEscrow(
-            seller,
-            arbiter,
-            address(0),
-            ESCROW_AMOUNT,
-            TRADE_ID,
-            TRADE_DATA_HASH
-        );
+        uint256 id = escrow.createEscrow(seller, arbiter, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH);
 
         assertEq(id, 0);
         assertEq(escrow.getEscrowCount(), 1);
@@ -84,14 +77,7 @@ contract BaseEscrowTest is EscrowTestBase {
         vm.expectEmit(true, true, true, true);
         emit BaseEscrow.EscrowCreated(0, buyer, seller, ESCROW_AMOUNT);
         vm.prank(buyer);
-        escrow.createEscrow(
-            seller,
-            arbiter,
-            address(0),
-            ESCROW_AMOUNT,
-            TRADE_ID,
-            TRADE_DATA_HASH
-        );
+        escrow.createEscrow(seller, arbiter, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -101,119 +87,56 @@ contract BaseEscrowTest is EscrowTestBase {
     function testRevert_Create_ZeroSeller() public {
         vm.expectRevert(BaseEscrow.InvalidAddresses.selector);
         vm.prank(buyer);
-        escrow.createEscrow(
-            address(0),
-            arbiter,
-            address(0),
-            ESCROW_AMOUNT,
-            TRADE_ID,
-            TRADE_DATA_HASH
-        );
+        escrow.createEscrow(address(0), arbiter, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH);
     }
 
     function testRevert_Create_ZeroArbiter() public {
         vm.expectRevert(BaseEscrow.InvalidAddresses.selector);
         vm.prank(buyer);
-        escrow.createEscrow(
-            seller,
-            address(0),
-            address(0),
-            ESCROW_AMOUNT,
-            TRADE_ID,
-            TRADE_DATA_HASH
-        );
+        escrow.createEscrow(seller, address(0), address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH);
     }
 
     function testRevert_Create_ZeroAmount() public {
         vm.expectRevert(BaseEscrow.InvalidAmount.selector);
         vm.prank(buyer);
-        escrow.createEscrow(
-            seller,
-            arbiter,
-            address(0),
-            0,
-            TRADE_ID,
-            TRADE_DATA_HASH
-        );
+        escrow.createEscrow(seller, arbiter, address(0), 0, TRADE_ID, TRADE_DATA_HASH);
     }
 
     function testRevert_Create_ExceedsMax() public {
         uint256 tooMuch = escrow.MAX_ESCROW_AMOUNT() + 1;
         vm.expectRevert(BaseEscrow.AmountExceedsMaximum.selector);
         vm.prank(buyer);
-        escrow.createEscrow(
-            seller,
-            arbiter,
-            address(0),
-            tooMuch,
-            TRADE_ID,
-            TRADE_DATA_HASH
-        );
+        escrow.createEscrow(seller, arbiter, address(0), tooMuch, TRADE_ID, TRADE_DATA_HASH);
     }
 
     function testRevert_Create_SellerIsBuyer() public {
         vm.expectRevert(BaseEscrow.SellerCannotBeBuyer.selector);
         vm.prank(buyer);
-        escrow.createEscrow(
-            buyer,
-            arbiter,
-            address(0),
-            ESCROW_AMOUNT,
-            TRADE_ID,
-            TRADE_DATA_HASH
-        );
+        escrow.createEscrow(buyer, arbiter, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH);
     }
 
     function testRevert_Create_ArbiterIsBuyer() public {
         vm.expectRevert(BaseEscrow.ArbiterCannotBeBuyer.selector);
         vm.prank(buyer);
-        escrow.createEscrow(
-            seller,
-            buyer,
-            address(0),
-            ESCROW_AMOUNT,
-            TRADE_ID,
-            TRADE_DATA_HASH
-        );
+        escrow.createEscrow(seller, buyer, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH);
     }
 
     function testRevert_Create_ArbiterIsSeller() public {
         vm.expectRevert(BaseEscrow.ArbiterCannotBeSeller.selector);
         vm.prank(buyer);
-        escrow.createEscrow(
-            seller,
-            seller,
-            address(0),
-            ESCROW_AMOUNT,
-            TRADE_ID,
-            TRADE_DATA_HASH
-        );
+        escrow.createEscrow(seller, seller, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH);
     }
 
     function testRevert_Create_BuyerIsProtocolArbiter() public {
         vm.expectRevert(BaseEscrow.ProtocolArbiterCannotBeParty.selector);
         vm.prank(protocolArb);
-        escrow.createEscrow(
-            seller,
-            arbiter,
-            address(0),
-            ESCROW_AMOUNT,
-            TRADE_ID,
-            TRADE_DATA_HASH
-        );
+        escrow.createEscrow(seller, arbiter, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH);
     }
 
     function testRevert_Create_SellerIsProtocolArbiter() public {
         vm.expectRevert(BaseEscrow.ProtocolArbiterCannotBeParty.selector);
         vm.prank(buyer);
-        escrow.createEscrow(
-            protocolArb,
-            arbiter,
-            address(0),
-            ESCROW_AMOUNT,
-            TRADE_ID,
-            TRADE_DATA_HASH
-        );
+        escrow.createEscrow(protocolArb, arbiter, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -306,10 +229,7 @@ contract BaseEscrowTest is EscrowTestBase {
     }
 
     function test_GetUserTier_DefaultBronze() public view {
-        assertEq(
-            uint8(escrow.getUserTier(buyer)),
-            uint8(EscrowTypes.UserTier.BRONZE)
-        );
+        assertEq(uint8(escrow.getUserTier(buyer)), uint8(EscrowTypes.UserTier.BRONZE));
     }
 
     function test_GetUserFeeRate_DefaultBronze() public view {
@@ -318,9 +238,7 @@ contract BaseEscrowTest is EscrowTestBase {
     }
 
     function test_GetUserStats_DefaultZero() public view {
-        (uint256 trades, uint256 initiated, uint256 lost) = escrow.getUserStats(
-            buyer
-        );
+        (uint256 trades, uint256 initiated, uint256 lost) = escrow.getUserStats(buyer);
         assertEq(trades, 0);
         assertEq(initiated, 0);
         assertEq(lost, 0);
@@ -335,9 +253,7 @@ contract BaseEscrowTest is EscrowTestBase {
         escrow.setKYCStatus(buyer, false);
         vm.expectRevert(BaseEscrow.NotKYCApproved.selector);
         vm.prank(buyer);
-        escrow.createEscrow(
-            seller, arbiter, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH
-        );
+        escrow.createEscrow(seller, arbiter, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH);
     }
 
     function testRevert_CreateEscrow_SellerNotKYC() public {
@@ -345,9 +261,7 @@ contract BaseEscrowTest is EscrowTestBase {
         escrow.setKYCStatus(seller, false);
         vm.expectRevert(BaseEscrow.NotKYCApproved.selector);
         vm.prank(buyer);
-        escrow.createEscrow(
-            seller, arbiter, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH
-        );
+        escrow.createEscrow(seller, arbiter, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH);
     }
 
     function testRevert_SetKYCStatus_NotOwner() public {
