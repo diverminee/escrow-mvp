@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity 0.8.24;
 
 import {Test, console} from "forge-std/Test.sol";
 import {DeployCredence} from "../script/DeployCredence.s.sol";
@@ -189,9 +189,17 @@ contract DeployCredenceTest is Test {
 
     // ═══════════════════════════════════════════════════════════
     //  Environment variable override tests
+    //  Prefixed with "zOverride" so they sort alphabetically LAST.
+    //  vm.setEnv writes to the OS process env and is NOT rolled back
+    //  by Foundry's EVM snapshots, so these must run after all
+    //  default-value assertion tests to prevent contamination.
     // ═══════════════════════════════════════════════════════════
 
-    function test_Deploy_WithCustomFeeRecipient() public {
+    function test_zOverride_CustomFeeRecipient() public {
+        // Reset all env vars before override to prevent cross-test leakage
+        vm.setEnv("FEE_RECIPIENT", vm.toString(ANVIL_FEE_RECIPIENT));
+        vm.setEnv("PROTOCOL_ARBITER", vm.toString(ANVIL_PROTOCOL_ARBITER));
+
         address customFee = makeAddr("customFee");
         vm.setEnv("FEE_RECIPIENT", vm.toString(customFee));
 
@@ -206,7 +214,11 @@ contract DeployCredenceTest is Test {
         vm.setEnv("FEE_RECIPIENT", vm.toString(ANVIL_FEE_RECIPIENT));
     }
 
-    function test_Deploy_WithCustomProtocolArbiter() public {
+    function test_zOverride_CustomProtocolArbiter() public {
+        // Reset all env vars before override to prevent cross-test leakage
+        vm.setEnv("FEE_RECIPIENT", vm.toString(ANVIL_FEE_RECIPIENT));
+        vm.setEnv("PROTOCOL_ARBITER", vm.toString(ANVIL_PROTOCOL_ARBITER));
+
         address customArbiter = makeAddr("customArbiter");
         vm.setEnv("PROTOCOL_ARBITER", vm.toString(customArbiter));
 
