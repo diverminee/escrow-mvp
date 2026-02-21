@@ -18,6 +18,7 @@ abstract contract BaseEscrow is ReentrancyGuard {
     ITradeOracle public immutable oracle;
     address public immutable feeRecipient;
     address public immutable protocolArbiter; // Escalation fallback (protocol multisig)
+    address public owner; // Admin for KYC and token registry
 
     mapping(uint256 => EscrowTypes.EscrowTransaction) public escrows;
     uint256 public nextEscrowId;
@@ -29,6 +30,12 @@ abstract contract BaseEscrow is ReentrancyGuard {
 
     // Track which escrows were created (prevents phantom escrow attacks)
     mapping(uint256 => bool) internal escrowExists;
+
+    // KYC: addresses approved to create/participate in escrows
+    mapping(address => bool) public kycApproved;
+
+    // Soft token allowlist: recommended/approved tokens (does not block other tokens)
+    mapping(address => bool) public approvedTokens;
 
     // Constants for validation
     uint256 public constant MAX_ESCROW_AMOUNT = 10_000_000e18; // 10M tokens max
@@ -55,6 +62,8 @@ abstract contract BaseEscrow is ReentrancyGuard {
     error ProtocolArbiterCannotBeParty();
     error ArbiterCannotBeProtocolArbiter();
     error AmountBelowMinimum();
+    error NotKYCApproved();
+    error NotOwner();
 
     // ============ Events ============
     event EscrowCreated(
@@ -75,6 +84,16 @@ abstract contract BaseEscrow is ReentrancyGuard {
         address indexed recipient,
         uint256 amount
     );
+    event KYCStatusUpdated(address indexed user, bool approved);
+    event ApprovedTokenAdded(address indexed token);
+    event ApprovedTokenRemoved(address indexed token);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
+    // ============ Modifiers ============
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert NotOwner();
+        _;
+    }
 
     // ============ Constructor ============
     /// @notice Initialize contract with oracle and fee recipient
@@ -94,6 +113,50 @@ abstract contract BaseEscrow is ReentrancyGuard {
         oracle = ITradeOracle(_oracleAddress);
         feeRecipient = _feeRecipient;
         protocolArbiter = _protocolArbiter;
+        owner = msg.sender;
+        emit OwnershipTransferred(address(0), msg.sender);
+    }
+
+    // ============ Admin Functions ============
+
+    /// @notice Approve or revoke KYC status for a user
+    /// @param user Address to update
+    /// @param approved True to approve, false to revoke
+    function setKYCStatus(address user, bool approved) external onlyOwner {
+        kycApproved[user] = approved;
+        emit KYCStatusUpdated(user, approved);
+    }
+
+    /// @notice Batch approve or revoke KYC status for multiple users
+    /// @param users Array of addresses to update
+    /// @param approved True to approve, false to revoke
+    function batchSetKYCStatus(address[] calldata users, bool approved) external onlyOwner {
+        for (uint256 i = 0; i < users.length; i++) {
+            kycApproved[users[i]] = approved;
+            emit KYCStatusUpdated(users[i], approved);
+        }
+    }
+
+    /// @notice Add a token to the recommended/approved token list
+    /// @param token Address of the ERC20 token (address(0) for ETH)
+    function addApprovedToken(address token) external onlyOwner {
+        approvedTokens[token] = true;
+        emit ApprovedTokenAdded(token);
+    }
+
+    /// @notice Remove a token from the recommended/approved token list
+    /// @param token Address of the ERC20 token
+    function removeApprovedToken(address token) external onlyOwner {
+        approvedTokens[token] = false;
+        emit ApprovedTokenRemoved(token);
+    }
+
+    /// @notice Transfer contract ownership
+    /// @param newOwner Address of the new owner
+    function transferOwnership(address newOwner) external onlyOwner {
+        if (newOwner == address(0)) revert InvalidAddresses();
+        emit OwnershipTransferred(owner, newOwner);
+        owner = newOwner;
     }
 
     // ============ Core Functions ============
@@ -117,6 +180,8 @@ abstract contract BaseEscrow is ReentrancyGuard {
         if (_seller == address(0) || _arbiter == address(0)) {
             revert InvalidAddresses();
         }
+        if (!kycApproved[msg.sender]) revert NotKYCApproved();
+        if (!kycApproved[_seller]) revert NotKYCApproved();
         if (_amount == 0) revert InvalidAmount();
         if (_amount < MIN_ESCROW_AMOUNT) revert AmountBelowMinimum();
         if (_amount > MAX_ESCROW_AMOUNT) revert AmountExceedsMaximum();

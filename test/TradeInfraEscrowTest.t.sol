@@ -145,6 +145,9 @@ contract TradeInfraEscrowTest is EscrowTestBase {
         address _seller,
         uint256 n
     ) internal {
+        // KYC-approve these addresses (test contract is the escrow owner)
+        escrow.setKYCStatus(_buyer, true);
+        escrow.setKYCStatus(_seller, true);
         for (uint256 i = 0; i < n; i++) {
             vm.deal(_buyer, ESCROW_AMOUNT + 1 ether);
             vm.prank(_buyer);

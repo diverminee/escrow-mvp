@@ -325,4 +325,101 @@ contract BaseEscrowTest is EscrowTestBase {
         assertEq(initiated, 0);
         assertEq(lost, 0);
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // KYC checks
+    // ═══════════════════════════════════════════════════════════════════
+
+    function testRevert_CreateEscrow_BuyerNotKYC() public {
+        // revoke buyer's KYC (test contract is owner)
+        escrow.setKYCStatus(buyer, false);
+        vm.expectRevert(BaseEscrow.NotKYCApproved.selector);
+        vm.prank(buyer);
+        escrow.createEscrow(
+            seller, arbiter, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH
+        );
+    }
+
+    function testRevert_CreateEscrow_SellerNotKYC() public {
+        // revoke seller's KYC
+        escrow.setKYCStatus(seller, false);
+        vm.expectRevert(BaseEscrow.NotKYCApproved.selector);
+        vm.prank(buyer);
+        escrow.createEscrow(
+            seller, arbiter, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH
+        );
+    }
+
+    function testRevert_SetKYCStatus_NotOwner() public {
+        vm.expectRevert(BaseEscrow.NotOwner.selector);
+        vm.prank(stranger);
+        escrow.setKYCStatus(buyer, false);
+    }
+
+    function test_SetKYCStatus_EmitsEvent() public {
+        vm.expectEmit(true, false, false, true);
+        emit BaseEscrow.KYCStatusUpdated(stranger, true);
+        escrow.setKYCStatus(stranger, true);
+    }
+
+    function test_BatchSetKYCStatus() public {
+        address[] memory users = new address[](2);
+        users[0] = makeAddr("u1");
+        users[1] = makeAddr("u2");
+        escrow.batchSetKYCStatus(users, true);
+        assertTrue(escrow.kycApproved(users[0]));
+        assertTrue(escrow.kycApproved(users[1]));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Token allowlist
+    // ═══════════════════════════════════════════════════════════════════
+
+    function test_AddApprovedToken() public {
+        address mockToken = makeAddr("mockToken");
+        assertFalse(escrow.approvedTokens(mockToken));
+        escrow.addApprovedToken(mockToken);
+        assertTrue(escrow.approvedTokens(mockToken));
+    }
+
+    function test_RemoveApprovedToken() public {
+        address mockToken = makeAddr("mockToken");
+        escrow.addApprovedToken(mockToken);
+        escrow.removeApprovedToken(mockToken);
+        assertFalse(escrow.approvedTokens(mockToken));
+    }
+
+    function testRevert_AddApprovedToken_NotOwner() public {
+        vm.expectRevert(BaseEscrow.NotOwner.selector);
+        vm.prank(stranger);
+        escrow.addApprovedToken(makeAddr("t"));
+    }
+
+    function test_AddApprovedToken_EmitsEvent() public {
+        address mockToken = makeAddr("tok");
+        vm.expectEmit(true, false, false, false);
+        emit BaseEscrow.ApprovedTokenAdded(mockToken);
+        escrow.addApprovedToken(mockToken);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Ownership
+    // ═══════════════════════════════════════════════════════════════════
+
+    function test_TransferOwnership() public {
+        address newOwner = makeAddr("newOwner");
+        escrow.transferOwnership(newOwner);
+        assertEq(escrow.owner(), newOwner);
+    }
+
+    function testRevert_TransferOwnership_NotOwner() public {
+        vm.expectRevert(BaseEscrow.NotOwner.selector);
+        vm.prank(stranger);
+        escrow.transferOwnership(stranger);
+    }
+
+    function testRevert_TransferOwnership_ZeroAddress() public {
+        vm.expectRevert(BaseEscrow.InvalidAddresses.selector);
+        escrow.transferOwnership(address(0));
+    }
 }

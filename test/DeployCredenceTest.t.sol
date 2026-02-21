@@ -4,20 +4,34 @@ pragma solidity ^0.8.19;
 import {Test, console} from "forge-std/Test.sol";
 import {DeployCredence} from "../script/DeployCredence.s.sol";
 import {TradeInfraEscrow} from "../src/core/TradeInfraEscrow.sol";
-import {MockOracle} from "../test/mocks/MockOracle.sol";
+import {CentralizedTradeOracle} from "../src/CentralizedTradeOracle.sol";
 import {ITradeOracle} from "../src/interfaces/ITradeOracle.sol";
 
 contract DeployCredenceTest is Test {
     DeployCredence deployer;
 
     // Anvil defaults used by the script
+    address constant ANVIL_DEPLOYER =
+        0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266; // key #0 (owner after deploy)
     address constant ANVIL_FEE_RECIPIENT =
         0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
     address constant ANVIL_PROTOCOL_ARBITER =
         0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC;
 
+    // The deploy script broadcasts 5 transactions:
+    //   [0] CentralizedTradeOracle deploy
+    //   [1] TradeInfraEscrow deploy
+    //   [2] addApprovedToken(address(0))
+    //   [3] addApprovedToken(USDC)
+    //   [4] addApprovedToken(USDT)
+    uint256 constant DEPLOY_TX_COUNT = 5;
+
     function setUp() public {
         deployer = new DeployCredence();
+        // Reset env vars to Anvil defaults before each test to prevent cross-test leakage.
+        // vm.setEnv changes are NOT rolled back by Foundry's EVM snapshot, so we reset here.
+        vm.setEnv("FEE_RECIPIENT", vm.toString(ANVIL_FEE_RECIPIENT));
+        vm.setEnv("PROTOCOL_ARBITER", vm.toString(ANVIL_PROTOCOL_ARBITER));
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -29,12 +43,8 @@ contract DeployCredenceTest is Test {
     }
 
     function test_DeployScript_DeploysTwoContracts() public {
-        // Before: record code size at expected CREATE2 addresses won't work,
-        // so we count deployments via vm.getDeployedCode after run
         deployer.run();
 
-        // The script deploys to deterministic addresses on a fresh EVM,
-        // verify both have code
         address expectedOracle = _getDeployedAddress(0);
         address expectedEscrow = _getDeployedAddress(1);
 
@@ -46,12 +56,21 @@ contract DeployCredenceTest is Test {
         deployer.run();
 
         address oracleAddr = _getDeployedAddress(0);
-        MockOracle oracle = MockOracle(oracleAddr);
+        CentralizedTradeOracle oracle = CentralizedTradeOracle(oracleAddr);
 
-        // MockOracle defaults to shouldVerify = true
+        // Unverified hash returns false by default
+        bytes32 testHash = keccak256("test");
+        assertFalse(
+            oracle.verifyTradeData(testHash),
+            "Unverified hash should return false"
+        );
+
+        // Owner submits verification → returns true
+        vm.prank(oracle.owner());
+        oracle.submitVerification(testHash, true);
         assertTrue(
-            oracle.verifyTradeData(keccak256("test")),
-            "Oracle should verify by default"
+            oracle.verifyTradeData(testHash),
+            "Verified hash should return true"
         );
     }
 
@@ -83,6 +102,8 @@ contract DeployCredenceTest is Test {
     }
 
     function test_Escrow_HasCorrectProtocolArbiter() public {
+        // Reset env to default in case another test modified PROTOCOL_ARBITER
+        vm.setEnv("PROTOCOL_ARBITER", vm.toString(ANVIL_PROTOCOL_ARBITER));
         deployer.run();
 
         address escrowAddr = _getDeployedAddress(1);
@@ -95,6 +116,15 @@ contract DeployCredenceTest is Test {
         );
     }
 
+    function test_Escrow_OwnerIsDeployer() public {
+        deployer.run();
+
+        address escrowAddr = _getDeployedAddress(1);
+        TradeInfraEscrow escrow = TradeInfraEscrow(payable(escrowAddr));
+
+        assertEq(escrow.owner(), ANVIL_DEPLOYER, "Owner should be deployer");
+    }
+
     function test_Escrow_StartsWithZeroEscrows() public {
         deployer.run();
 
@@ -102,6 +132,24 @@ contract DeployCredenceTest is Test {
         TradeInfraEscrow escrow = TradeInfraEscrow(payable(escrowAddr));
 
         assertEq(escrow.nextEscrowId(), 0, "Should start with 0 escrows");
+    }
+
+    function test_Escrow_ApprovedTokensSeeded() public {
+        deployer.run();
+
+        address escrowAddr = _getDeployedAddress(1);
+        TradeInfraEscrow escrow = TradeInfraEscrow(payable(escrowAddr));
+
+        // ETH (address(0)), USDC, and USDT should be approved
+        assertTrue(escrow.approvedTokens(address(0)), "ETH should be approved");
+        assertTrue(
+            escrow.approvedTokens(0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238),
+            "USDC should be approved"
+        );
+        assertTrue(
+            escrow.approvedTokens(0x7169D38820dfd117C3FA1f22a697dBA58d90BA06),
+            "USDT should be approved"
+        );
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -118,13 +166,19 @@ contract DeployCredenceTest is Test {
         address seller = makeAddr("seller");
         address arbiter = makeAddr("arbiter");
 
+        // KYC buyer and seller — escrow owner is the Anvil deployer key
+        vm.prank(ANVIL_DEPLOYER);
+        escrow.setKYCStatus(buyer, true);
+        vm.prank(ANVIL_DEPLOYER);
+        escrow.setKYCStatus(seller, true);
+
         vm.prank(buyer);
         escrow.createEscrow(
             seller,
             arbiter,
-            address(0), // ETH escrow
+            address(0),
             1 ether,
-            1, // tradeId
+            1,
             keccak256("trade-data")
         );
 
@@ -142,6 +196,12 @@ contract DeployCredenceTest is Test {
         address seller = makeAddr("seller");
         address arbiter = makeAddr("arbiter");
         vm.deal(buyer, 10 ether);
+
+        // KYC buyer and seller
+        vm.prank(ANVIL_DEPLOYER);
+        escrow.setKYCStatus(buyer, true);
+        vm.prank(ANVIL_DEPLOYER);
+        escrow.setKYCStatus(seller, true);
 
         // Create
         vm.prank(buyer);
@@ -218,15 +278,16 @@ contract DeployCredenceTest is Test {
     /// @dev The deploy script broadcasts from a single sender. Contracts are
     ///      deployed via CREATE, so addresses are deterministic based on
     ///      sender nonce. This helper computes the expected address.
+    ///
+    ///      The script makes DEPLOY_TX_COUNT broadcast transactions total:
+    ///        [0] oracle deploy, [1] escrow deploy, [2-4] addApprovedToken calls.
+    ///      nonceOffset=0 → oracle, nonceOffset=1 → escrow.
     function _getDeployedAddress(
         uint256 nonceOffset
     ) internal view returns (address) {
-        // The script broadcasts from the Anvil default deployer
-        address scriptSender = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266; // Anvil #0
+        address scriptSender = ANVIL_DEPLOYER;
         uint256 baseNonce = vm.getNonce(scriptSender);
-        // After run(), nonce has been incremented. The first deploy was at (baseNonce - 2),
-        // the second at (baseNonce - 1).
-        uint256 nonce = baseNonce - 2 + nonceOffset;
+        uint256 nonce = baseNonce - DEPLOY_TX_COUNT + nonceOffset;
         return _computeCreateAddress(scriptSender, nonce);
     }
 

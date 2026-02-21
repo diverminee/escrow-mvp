@@ -38,6 +38,12 @@ abstract contract EscrowTestBase is Test {
             protocolArb
         );
 
+        // KYC-approve the standard test actors so createEscrow works.
+        // The test contract is the escrow owner (msg.sender at deploy time).
+        escrow.setKYCStatus(buyer, true);
+        escrow.setKYCStatus(seller, true);
+        escrow.setKYCStatus(protocolArb, true); // needed for edge-case role tests
+
         // Give buyer ETH and tokens
         vm.deal(buyer, 100 ether);
         token.mint(buyer, 100_000e18);

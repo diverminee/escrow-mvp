@@ -80,6 +80,7 @@ contract DisputeEscrowTest is EscrowTestBase {
         address[] memory sellers = new address[](10);
         for (uint256 i = 0; i < 10; i++) {
             sellers[i] = makeAddr(string(abi.encodePacked("seller", i)));
+            escrow.setKYCStatus(sellers[i], true); // KYC each generated seller
         }
         // Fund and raise dispute for 10 escrows (buyer initiates all 10)
         for (uint256 i = 0; i < 10; i++) {
@@ -99,6 +100,7 @@ contract DisputeEscrowTest is EscrowTestBase {
         }
         // 11th escrow
         address extraSeller = makeAddr("extraSeller");
+        escrow.setKYCStatus(extraSeller, true);
         vm.prank(buyer);
         uint256 id11 = escrow.createEscrow(
             extraSeller,
@@ -122,6 +124,7 @@ contract DisputeEscrowTest is EscrowTestBase {
         // buyer creates 3 escrows, arbiter rules against buyer all 3
         for (uint256 i = 0; i < 3; i++) {
             address s = makeAddr(string(abi.encodePacked("s", i)));
+            escrow.setKYCStatus(s, true); // KYC the generated seller
             vm.prank(buyer);
             uint256 id = escrow.createEscrow(
                 s,
@@ -142,6 +145,7 @@ contract DisputeEscrowTest is EscrowTestBase {
         // Buyer now has 3 losses, 3 disputes initiated → 100% loss rate
         // 4th escrow: should be blocked
         address s4 = makeAddr("s4");
+        escrow.setKYCStatus(s4, true);
         vm.prank(buyer);
         uint256 id4 = escrow.createEscrow(
             s4,
@@ -166,6 +170,7 @@ contract DisputeEscrowTest is EscrowTestBase {
     function test_CanRaiseDispute_False_HardLimit() public {
         for (uint256 i = 0; i < 10; i++) {
             address s = makeAddr(string(abi.encodePacked("sl", i)));
+            escrow.setKYCStatus(s, true); // KYC the generated seller
             vm.prank(buyer);
             uint256 id = escrow.createEscrow(
                 s,
