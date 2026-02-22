@@ -239,4 +239,17 @@ contract ChainlinkOracleTest is Test {
         oracle.transferOwnership(stranger);
         assertEq(oracle.owner(), stranger);
     }
+
+    function testRevert_TransferOwnership_ZeroAddress() public {
+        vm.prank(owner);
+        vm.expectRevert(ChainlinkTradeOracle.ZeroAddress.selector);
+        oracle.transferOwnership(address(0));
+    }
+
+    function test_TransferOwnership_EmitsEvent() public {
+        vm.expectEmit(true, true, false, false);
+        emit ChainlinkTradeOracle.OwnershipTransferred(owner, stranger);
+        vm.prank(owner);
+        oracle.transferOwnership(stranger);
+    }
 }

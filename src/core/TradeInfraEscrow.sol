@@ -2,9 +2,7 @@
 pragma solidity 0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {
-    SafeERC20
-} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {EscrowTypes} from "../libraries/EscrowTypes.sol";
 import {DisputeEscrow} from "./DisputeEscrow.sol";
 
@@ -19,34 +17,18 @@ contract TradeInfraEscrow is DisputeEscrow {
     error DocumentsNotCommitted();
 
     // ============ Constructor ============
-    constructor(
-        address _oracleAddress,
-        address _feeRecipient,
-        address _protocolArbiter
-    ) DisputeEscrow(_oracleAddress, _feeRecipient, _protocolArbiter) {}
+    constructor(address _oracleAddress, address _feeRecipient, address _protocolArbiter)
+        DisputeEscrow(_oracleAddress, _feeRecipient, _protocolArbiter)
+    {}
 
     // ============ Events ============
-    event DeliveryConfirmed(
-        uint256 indexed escrowId,
-        address indexed buyer,
-        uint256 timestamp
-    );
-    event OracleConfirmed(
-        uint256 indexed escrowId,
-        bytes32 merkleRoot,
-        uint256 timestamp
-    );
+    event DeliveryConfirmed(uint256 indexed escrowId, address indexed buyer, uint256 timestamp);
+    event OracleConfirmed(uint256 indexed escrowId, bytes32 merkleRoot, uint256 timestamp);
     event CommitmentFulfilled(
-        uint256 indexed escrowId,
-        address indexed buyer,
-        uint256 remainingAmount,
-        uint256 timestamp
+        uint256 indexed escrowId, address indexed buyer, uint256 remainingAmount, uint256 timestamp
     );
     event CommitmentDefaulted(
-        uint256 indexed escrowId,
-        address indexed seller,
-        uint256 collateralAmount,
-        uint256 timestamp
+        uint256 indexed escrowId, address indexed seller, uint256 collateralAmount, uint256 timestamp
     );
 
     /// @notice Buyer manually confirms delivery and releases funds
@@ -70,22 +52,16 @@ contract TradeInfraEscrow is DisputeEscrow {
             revert DocumentsNotCommitted();
         }
 
-        if (!oracle.verifyTradeData(txn.tradeDataHash)) {
+        if (!oracle.verifyTradeData(escrowDocuments[_escrowId].merkleRoot)) {
             revert OracleVerificationFailed();
         }
 
         _releaseFunds(_escrowId, txn.seller);
-        emit OracleConfirmed(
-            _escrowId,
-            escrowDocuments[_escrowId].merkleRoot,
-            block.timestamp
-        );
+        emit OracleConfirmed(_escrowId, escrowDocuments[_escrowId].merkleRoot, block.timestamp);
     }
 
     /// @notice Buyer fulfills remaining payment for PAYMENT_COMMITMENT escrow
-    function fulfillCommitment(
-        uint256 _escrowId
-    ) external payable nonReentrant whenNotPaused {
+    function fulfillCommitment(uint256 _escrowId) external payable nonReentrant whenNotPaused {
         if (!escrowExists[_escrowId]) revert EscrowNotFound();
         EscrowTypes.EscrowTransaction storage txn = escrows[_escrowId];
         if (txn.state != EscrowTypes.State.FUNDED) revert InvalidState();
@@ -102,20 +78,11 @@ contract TradeInfraEscrow is DisputeEscrow {
             if (msg.value != remaining) revert IncorrectETHAmount();
         } else {
             if (msg.value > 0) revert NoETHForERC20Escrow();
-            IERC20(txn.token).safeTransferFrom(
-                msg.sender,
-                address(this),
-                remaining
-            );
+            IERC20(txn.token).safeTransferFrom(msg.sender, address(this), remaining);
         }
 
         txn.commitmentFulfilled = true;
-        emit CommitmentFulfilled(
-            _escrowId,
-            msg.sender,
-            remaining,
-            block.timestamp
-        );
+        emit CommitmentFulfilled(_escrowId, msg.sender, remaining, block.timestamp);
     }
 
     /// @notice Seller claims collateral after buyer defaults on payment commitment
@@ -128,32 +95,20 @@ contract TradeInfraEscrow is DisputeEscrow {
             revert NotPaymentCommitmentMode();
         }
         if (txn.commitmentFulfilled) revert CommitmentAlreadyFulfilled();
-        if (block.timestamp <= txn.maturityDate)
+        if (block.timestamp <= txn.maturityDate) {
             revert CommitmentNotYetOverdue();
+        }
 
         uint256 collateral = txn.collateralAmount;
         _releaseFunds(_escrowId, txn.seller);
-        emit CommitmentDefaulted(
-            _escrowId,
-            msg.sender,
-            collateral,
-            block.timestamp
-        );
+        emit CommitmentDefaulted(_escrowId, msg.sender, collateral, block.timestamp);
     }
 
     /// @notice Get maturity status for a payment commitment escrow
-    function getMaturityStatus(
-        uint256 _escrowId
-    )
+    function getMaturityStatus(uint256 _escrowId)
         external
         view
-        returns (
-            bool isPC,
-            uint256 maturity,
-            bool fulfilled,
-            bool overdue,
-            uint256 remaining
-        )
+        returns (bool isPC, uint256 maturity, bool fulfilled, bool overdue, uint256 remaining)
     {
         if (!escrowExists[_escrowId]) revert EscrowNotFound();
         EscrowTypes.EscrowTransaction memory txn = escrows[_escrowId];
@@ -172,9 +127,7 @@ contract TradeInfraEscrow is DisputeEscrow {
     }
 
     /// @notice Get user's tier name as string
-    function getUserTierName(
-        address _user
-    ) external view returns (string memory) {
+    function getUserTierName(address _user) external view returns (string memory) {
         EscrowTypes.UserTier tier = getUserTier(_user);
         if (tier == EscrowTypes.UserTier.DIAMOND) return "DIAMOND";
         if (tier == EscrowTypes.UserTier.GOLD) return "GOLD";

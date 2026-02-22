@@ -351,20 +351,20 @@ contract BaseEscrowTest is EscrowTestBase {
     function test_UpgradeTier_ToLaunch() public {
         escrow.upgradeTier(EscrowTypes.DeploymentTier.LAUNCH);
         assertEq(uint8(escrow.currentTier()), uint8(EscrowTypes.DeploymentTier.LAUNCH));
-        assertEq(escrow.maxEscrowAmount(), escrow.LAUNCH_LIMIT());
+        assertEq(escrow.maxEscrowAmount(), escrow.launchLimit());
     }
 
     function test_UpgradeTier_ToGrowth() public {
         escrow.upgradeTier(EscrowTypes.DeploymentTier.LAUNCH);
         escrow.upgradeTier(EscrowTypes.DeploymentTier.GROWTH);
         assertEq(uint8(escrow.currentTier()), uint8(EscrowTypes.DeploymentTier.GROWTH));
-        assertEq(escrow.maxEscrowAmount(), escrow.GROWTH_LIMIT());
+        assertEq(escrow.maxEscrowAmount(), escrow.growthLimit());
     }
 
     function test_UpgradeTier_ToMature() public {
         escrow.upgradeTier(EscrowTypes.DeploymentTier.MATURE);
         assertEq(uint8(escrow.currentTier()), uint8(EscrowTypes.DeploymentTier.MATURE));
-        assertEq(escrow.maxEscrowAmount(), escrow.MATURE_LIMIT());
+        assertEq(escrow.maxEscrowAmount(), escrow.matureLimit());
     }
 
     function testRevert_UpgradeTier_CannotDecrease() public {
@@ -387,7 +387,7 @@ contract BaseEscrowTest is EscrowTestBase {
 
     function test_UpgradeTier_EmitsEvent() public {
         vm.expectEmit(true, true, false, true);
-        emit BaseEscrow.DeploymentTierUpgraded(0, 1, escrow.LAUNCH_LIMIT());
+        emit BaseEscrow.DeploymentTierUpgraded(0, 1, escrow.launchLimit());
         escrow.upgradeTier(EscrowTypes.DeploymentTier.LAUNCH);
     }
 
@@ -400,7 +400,7 @@ contract BaseEscrowTest is EscrowTestBase {
 
     function testRevert_SetMaxEscrowAmount_AboveCeiling() public {
         escrow.upgradeTier(EscrowTypes.DeploymentTier.LAUNCH);
-        uint256 aboveCeiling = escrow.LAUNCH_LIMIT() + 1;
+        uint256 aboveCeiling = escrow.launchLimit() + 1;
         vm.expectRevert(BaseEscrow.AmountExceedsTierCeiling.selector);
         escrow.setMaxEscrowAmount(aboveCeiling);
     }
@@ -413,7 +413,7 @@ contract BaseEscrowTest is EscrowTestBase {
 
     function test_EscrowCreation_FailsAboveLimit_AtLaunchTier() public {
         escrow.upgradeTier(EscrowTypes.DeploymentTier.LAUNCH);
-        uint256 aboveLimit = escrow.LAUNCH_LIMIT() + 1;
+        uint256 aboveLimit = escrow.launchLimit() + 1;
         vm.expectRevert(BaseEscrow.AmountExceedsMaximum.selector);
         vm.prank(buyer);
         escrow.createEscrow(seller, arbiter, address(0), aboveLimit, TRADE_ID, TRADE_DATA_HASH);
@@ -421,7 +421,7 @@ contract BaseEscrowTest is EscrowTestBase {
 
     function test_EscrowCreation_AllowedAtLimit() public {
         escrow.upgradeTier(EscrowTypes.DeploymentTier.LAUNCH);
-        uint256 atLimit = escrow.LAUNCH_LIMIT();
+        uint256 atLimit = escrow.launchLimit();
         vm.prank(buyer);
         uint256 id = escrow.createEscrow(seller, arbiter, address(0), atLimit, TRADE_ID, TRADE_DATA_HASH);
         assertTrue(escrow.escrowIsValid(id));

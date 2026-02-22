@@ -16,11 +16,13 @@ contract ChainlinkTradeOracle is FunctionsClient, ITradeOracle {
     error RequestAlreadyPending();
     error RequestNotExpired();
     error EmptyTrackingReference();
+    error ZeroAddress();
 
     // ============ Events ============
     event VerificationRequested(bytes32 indexed tradeDataHash, bytes32 indexed requestId);
     event VerificationFulfilled(bytes32 indexed tradeDataHash, bool result);
     event SourceUpdated(string newSource);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     // ============ State Variables ============
     address public owner;
@@ -88,7 +90,9 @@ contract ChainlinkTradeOracle is FunctionsClient, ITradeOracle {
     /// @param tradeDataHash The trade data hash to verify
     /// @param trackingReference Shipping tracking reference passed to the JS source
     function requestVerification(bytes32 tradeDataHash, string calldata trackingReference) external onlyOwner {
-        if (bytes(trackingReference).length == 0) revert EmptyTrackingReference();
+        if (bytes(trackingReference).length == 0) {
+            revert EmptyTrackingReference();
+        }
 
         // Check if there's already a pending request
         bytes32 existingRequestId = latestRequestId[tradeDataHash];
@@ -161,6 +165,8 @@ contract ChainlinkTradeOracle is FunctionsClient, ITradeOracle {
     /// @notice Transfer ownership
     /// @param newOwner New owner address
     function transferOwnership(address newOwner) external onlyOwner {
+        if (newOwner == address(0)) revert ZeroAddress();
+        emit OwnershipTransferred(owner, newOwner);
         owner = newOwner;
     }
 

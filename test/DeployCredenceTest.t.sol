@@ -160,7 +160,7 @@ contract DeployCredenceTest is Test {
         TradeInfraEscrow escrow = TradeInfraEscrow(payable(deployer.deployedEscrow()));
 
         assertEq(uint8(escrow.currentTier()), uint8(EscrowTypes.DeploymentTier.LAUNCH), "Tier should be LAUNCH");
-        assertEq(escrow.maxEscrowAmount(), escrow.LAUNCH_LIMIT(), "Max should be LAUNCH limit");
+        assertEq(escrow.maxEscrowAmount(), escrow.launchLimit(), "Max should be LAUNCH limit");
     }
 
     // ═══════════════════════════════════════════════════════════

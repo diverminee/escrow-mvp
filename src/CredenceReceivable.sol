@@ -13,6 +13,7 @@ contract CredenceReceivable is ERC721, IReceivableMinter {
     error OnlyEscrow();
     error AlreadySettled();
     error TokenDoesNotExist();
+    error SettledReceivableNotTransferable();
 
     // ============ State Variables ============
     address public immutable escrowContract;
@@ -79,6 +80,19 @@ contract CredenceReceivable is ERC721, IReceivableMinter {
 
         data.isSettled = true;
         emit ReceivableSettledNFT(tokenId, data.escrowId);
+    }
+
+    // ============ Transfer Restrictions ============
+
+    /// @notice Override ERC721 _update to block transfers of settled receivables
+    /// @dev Allows minting (from == 0) and burning (to == 0), blocks transfer when settled
+    function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
+        address from = _ownerOf(tokenId);
+        // Block transfers (not mints/burns) of settled tokens
+        if (receivables[tokenId].isSettled && from != address(0) && to != address(0)) {
+            revert SettledReceivableNotTransferable();
+        }
+        return super._update(to, tokenId, auth);
     }
 
     // ============ View Functions ============

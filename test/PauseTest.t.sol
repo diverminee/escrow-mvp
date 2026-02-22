@@ -107,14 +107,7 @@ contract PauseTest is EscrowTestBase {
         escrow.pause();
         vm.prank(buyer);
         vm.expectRevert(Pausable.EnforcedPause.selector);
-        escrow.createEscrow(
-            seller,
-            arbiter,
-            address(0),
-            ESCROW_AMOUNT,
-            TRADE_ID,
-            TRADE_DATA_HASH
-        );
+        escrow.createEscrow(seller, arbiter, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH);
     }
 
     function testRevert_CreateEscrow9_WhenPaused() public {
@@ -158,14 +151,7 @@ contract PauseTest is EscrowTestBase {
         escrow.pause();
         escrow.unpause();
         vm.prank(buyer);
-        uint256 id = escrow.createEscrow(
-            seller,
-            arbiter,
-            address(0),
-            ESCROW_AMOUNT,
-            TRADE_ID,
-            TRADE_DATA_HASH
-        );
+        uint256 id = escrow.createEscrow(seller, arbiter, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH);
         _assertState(id, EscrowTypes.State.DRAFT);
     }
 
@@ -244,7 +230,7 @@ contract PauseTest is EscrowTestBase {
         uint256 id = _fundedETHEscrow();
         escrow.pause();
         _commitDocuments(id);
-        (, , , , bytes32 merkleRoot, ) = escrow.escrowDocuments(id);
+        (,,,, bytes32 merkleRoot,) = escrow.escrowDocuments(id);
         assertTrue(merkleRoot != bytes32(0));
     }
 
@@ -275,9 +261,7 @@ contract PauseTest is EscrowTestBase {
     // E2E — Full flow scenarios
     // ═══════════════════════════════════════════════════════════════════
 
-    function test_E2E_PauseMidFlow_ExistingSettles_NewBlocked_UnpauseRestores()
-        public
-    {
+    function test_E2E_PauseMidFlow_ExistingSettles_NewBlocked_UnpauseRestores() public {
         // 1. Create and fund an escrow before pause
         uint256 existingId = _fundedETHEscrow();
 
@@ -292,26 +276,12 @@ contract PauseTest is EscrowTestBase {
         // 4. New escrow creation blocked
         vm.prank(buyer);
         vm.expectRevert(Pausable.EnforcedPause.selector);
-        escrow.createEscrow(
-            seller,
-            arbiter,
-            address(0),
-            ESCROW_AMOUNT,
-            TRADE_ID,
-            TRADE_DATA_HASH
-        );
+        escrow.createEscrow(seller, arbiter, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH);
 
         // 5. Unpause restores
         escrow.unpause();
         vm.prank(buyer);
-        uint256 newId = escrow.createEscrow(
-            seller,
-            arbiter,
-            address(0),
-            ESCROW_AMOUNT,
-            TRADE_ID,
-            TRADE_DATA_HASH
-        );
+        uint256 newId = escrow.createEscrow(seller, arbiter, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH);
         _assertState(newId, EscrowTypes.State.DRAFT);
 
         vm.prank(buyer);
@@ -338,13 +308,6 @@ contract PauseTest is EscrowTestBase {
         // 5. New escrows still blocked
         vm.prank(buyer);
         vm.expectRevert(Pausable.EnforcedPause.selector);
-        escrow.createEscrow(
-            seller,
-            arbiter,
-            address(0),
-            ESCROW_AMOUNT,
-            TRADE_ID,
-            TRADE_DATA_HASH
-        );
+        escrow.createEscrow(seller, arbiter, address(0), ESCROW_AMOUNT, TRADE_ID, TRADE_DATA_HASH);
     }
 }

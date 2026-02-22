@@ -6,7 +6,7 @@ import {BaseEscrow} from "./BaseEscrow.sol";
 
 /// @title Dispute Escrow Contract
 /// @notice Extends base escrow with dispute resolution functionality
-contract DisputeEscrow is BaseEscrow {
+abstract contract DisputeEscrow is BaseEscrow {
     // ============ Errors ============
     error NotAParty();
     error NotTheArbiter();

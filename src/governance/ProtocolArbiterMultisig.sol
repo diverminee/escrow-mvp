@@ -26,6 +26,8 @@ contract ProtocolArbiterMultisig {
     event ResolutionExecuted(uint256 indexed proposalId, uint256 indexed escrowId, uint8 ruling);
     event SignerAdded(address indexed signer);
     event SignerRemoved(address indexed signer);
+    event GovernanceActionProposed(uint256 indexed proposalId, address indexed target, address indexed proposer);
+    event GovernanceActionExecuted(uint256 indexed proposalId, address indexed target);
 
     // ============ Constants ============
     uint256 public constant PROPOSAL_EXPIRY = 7 days;
@@ -43,6 +45,8 @@ contract ProtocolArbiterMultisig {
         uint256 createdAt;
         bool executed;
         uint256 approvalCount;
+        address target;
+        bytes callData;
         mapping(address => bool) approvals;
     }
 
@@ -135,6 +139,35 @@ contract ProtocolArbiterMultisig {
         emit ResolutionRevoked(proposalId, msg.sender);
     }
 
+    /// @notice Propose a generic governance action (e.g., addSigner, removeSigner)
+    /// @param _target Address to call (typically address(this) for signer management)
+    /// @param _callData ABI-encoded function call
+    /// @return proposalId The created proposal ID
+    function proposeGovernanceAction(address _target, bytes calldata _callData)
+        external
+        onlySigner
+        returns (uint256 proposalId)
+    {
+        if (_target == address(0)) revert InvalidAddress();
+
+        proposalId = nextProposalId++;
+        Proposal storage p = proposals[proposalId];
+        p.target = _target;
+        p.callData = _callData;
+        p.createdAt = block.timestamp;
+
+        // Proposer automatically approves
+        p.approvals[msg.sender] = true;
+        p.approvalCount = 1;
+
+        emit GovernanceActionProposed(proposalId, _target, msg.sender);
+        emit ResolutionApproved(proposalId, msg.sender);
+
+        if (p.approvalCount >= threshold) {
+            _executeProposal(proposalId);
+        }
+    }
+
     /// @notice Add a new signer (requires calling from this contract itself via proposal execution)
     /// @param signer Address to add
     function addSigner(address signer) external {
@@ -185,15 +218,22 @@ contract ProtocolArbiterMultisig {
 
     // ============ Internal Functions ============
 
-    /// @notice Execute a proposal by calling resolveEscalation on the escrow
+    /// @notice Execute a proposal — either resolveEscalation or a governance action
     function _executeProposal(uint256 proposalId) internal {
         Proposal storage p = proposals[proposalId];
         p.executed = true;
 
-        // Call escrow.resolveEscalation(escrowId, ruling)
-        (bool success,) = escrow.call(abi.encodeWithSignature("resolveEscalation(uint256,uint8)", p.escrowId, p.ruling));
-        require(success, "resolveEscalation failed");
-
-        emit ResolutionExecuted(proposalId, p.escrowId, p.ruling);
+        if (p.callData.length > 0) {
+            // Governance action (e.g., addSigner, removeSigner)
+            (bool success,) = p.target.call(p.callData);
+            require(success, "governance action failed");
+            emit GovernanceActionExecuted(proposalId, p.target);
+        } else {
+            // Legacy resolution path
+            (bool success,) =
+                escrow.call(abi.encodeWithSignature("resolveEscalation(uint256,uint8)", p.escrowId, p.ruling));
+            require(success, "resolveEscalation failed");
+            emit ResolutionExecuted(proposalId, p.escrowId, p.ruling);
+        }
     }
 }

@@ -154,7 +154,7 @@ script/
 
 ```
 BaseEscrow (abstract)
-    └── DisputeEscrow
+    └── DisputeEscrow (abstract)
             └── TradeInfraEscrow   ← deploy this
 ```
 
@@ -351,7 +351,7 @@ Every address accumulates a reputation score from completed escrows. Fees are de
 | **GOLD**    | 20+ successful trades, 1 or fewer dispute losses | 0.8%         |
 | **DIAMOND** | 50+ successful trades, 0 dispute losses          | 0.7%         |
 
-The tier is evaluated at escrow creation and snapshotted in the `feeRate` field, locking fee terms for the lifetime of that escrow regardless of subsequent reputation changes.
+The fee tier is based on the **seller's** reputation (the party receiving funds). It is evaluated at escrow creation and snapshotted in the `feeRate` field, locking fee terms for the lifetime of that escrow regardless of subsequent reputation changes.
 
 **Example:** On a $100,000 USDC trade, a BRONZE user pays $1,200 in protocol fees. A DIAMOND user pays $700. For high-volume importers and exporters, the fee reduction compounds meaningfully over time. Both are substantially below the 0.5-3% charged by traditional LC-issuing banks — before accounting for correspondent bank fees, SWIFT charges, and FX spreads.
 
@@ -382,16 +382,16 @@ FUNDED ──► DISPUTED ──► arbiter resolves (14-day window)
 
 ## Deployment Tiers
 
-Credence implements progressive deployment tiers that cap the maximum escrow amount as the protocol matures through production milestones.
+Credence implements progressive deployment tiers that cap the maximum escrow amount as the protocol matures through production milestones. Tier ceilings are configurable by the owner via `setTierLimits()` to accommodate different token decimals (e.g., 18-decimal ETH vs 6-decimal USDC).
 
-| Tier        | Max Escrow Amount | Use Case                              |
-| ----------- | ----------------- | ------------------------------------- |
-| **TESTNET** | Unlimited         | Development and testing               |
-| **LAUNCH**  | 50,000 tokens     | Early production, limited exposure    |
-| **GROWTH**  | 500,000 tokens    | Scaling with operational track record |
-| **MATURE**  | 10,000,000 tokens | Full production                       |
+| Tier        | Default Max Amount | Use Case                              |
+| ----------- | ------------------ | ------------------------------------- |
+| **TESTNET** | Unlimited          | Development and testing               |
+| **LAUNCH**  | 50,000 tokens      | Early production, limited exposure    |
+| **GROWTH**  | 500,000 tokens     | Scaling with operational track record |
+| **MATURE**  | 10,000,000 tokens  | Full production                       |
 
-Tiers can only be upgraded (never downgraded) by the contract owner via `upgradeTier()`. Existing escrows are unaffected by tier changes. The maximum can also be set manually within the tier ceiling via `setMaxEscrowAmount()`.
+Tiers can only be upgraded (never downgraded) by the contract owner via `upgradeTier()`. Existing escrows are unaffected by tier changes. The maximum can also be set manually within the tier ceiling via `setMaxEscrowAmount()`. The minimum escrow amount is configurable via `setMinEscrowAmount()` (default: 0.01 ether).
 
 ---
 
@@ -420,6 +420,10 @@ Tiers can only be upgraded (never downgraded) by the contract owner via `upgrade
 | `removeApprovedToken(token)`                                  | Owner            | Remove token from recommended list                  |
 | `upgradeTier(tier)`                                           | Owner            | Upgrade deployment tier                             |
 | `setMaxEscrowAmount(amount)`                                  | Owner            | Set max within tier ceiling                         |
+| `setMinEscrowAmount(min)`                                     | Owner            | Set minimum escrow amount                           |
+| `setTierLimits(launch, growth, mature)`                       | Owner            | Set per-tier maximum ceilings                       |
+| `setFeeRecipient(recipient)`                                  | Owner            | Update protocol fee recipient                       |
+| `setProtocolArbiter(arbiter)`                                 | Owner            | Update escalation authority                         |
 | `setReceivableMinter(minter)`                                 | Owner            | Register receivable NFT contract                    |
 | `pause()`                                                     | Owner            | Emergency pause — blocks createEscrow, fund, fulfillCommitment |
 | `unpause()`                                                   | Owner            | Restore normal operation after pause                |
@@ -437,6 +441,7 @@ Tiers can only be upgraded (never downgraded) by the contract owner via `upgrade
 | Function                                     | Access   | Description                                              |
 | -------------------------------------------- | -------- | -------------------------------------------------------- |
 | `proposeResolution(escrowId, ruling)`         | Signer   | Create a resolution proposal (auto-approves for proposer)|
+| `proposeGovernanceAction(target, callData)`   | Signer   | Propose a generic governance action (e.g., addSigner)    |
 | `approveResolution(proposalId)`               | Signer   | Approve an existing proposal                             |
 | `revokeApproval(proposalId)`                  | Signer   | Withdraw approval before threshold is reached            |
 | `addSigner(signer)`                           | Self     | Add a new signer (executed via proposal)                 |
@@ -499,6 +504,10 @@ All state transitions emit indexed events for off-chain indexing, analytics, and
 | `OwnershipTransferred`   | `address indexed oldOwner, address indexed newOwner`                                          |
 | `DeploymentTierUpgraded` | `uint8 indexed oldTier, uint8 indexed newTier, uint256 maxAmount`                             |
 | `ReceivableMinterUpdated`| `address indexed oldMinter, address indexed newMinter`                                        |
+| `MinEscrowAmountUpdated` | `uint256 oldMin, uint256 newMin`                                                              |
+| `TierLimitsUpdated`     | `uint256 launchLimit, uint256 growthLimit, uint256 matureLimit`                                |
+| `FeeRecipientUpdated`   | `address indexed oldRecipient, address indexed newRecipient`                                   |
+| `ProtocolArbiterUpdated`| `address indexed oldArbiter, address indexed newArbiter`                                       |
 | `Paused`                 | `address account` (inherited from OpenZeppelin Pausable)                                      |
 | `Unpaused`               | `address account` (inherited from OpenZeppelin Pausable)                                      |
 
@@ -531,6 +540,8 @@ All state transitions emit indexed events for off-chain indexing, analytics, and
 | `ResolutionExecuted` | `uint256 indexed proposalId, uint256 indexed escrowId, uint8 ruling`            |
 | `SignerAdded`        | `address indexed signer`                                                        |
 | `SignerRemoved`      | `address indexed signer`                                                        |
+| `GovernanceActionProposed` | `uint256 indexed proposalId, address indexed target, address indexed proposer` |
+| `GovernanceActionExecuted` | `uint256 indexed proposalId, address indexed target`                          |
 
 **CredenceReceivable**
 
@@ -553,6 +564,7 @@ All state transitions emit indexed events for off-chain indexing, analytics, and
 | `VerificationRequested`  | `bytes32 indexed tradeDataHash, bytes32 indexed requestId` |
 | `VerificationFulfilled`  | `bytes32 indexed tradeDataHash, bool result`             |
 | `SourceUpdated`          | `string newSource`                                       |
+| `OwnershipTransferred`   | `address indexed previousOwner, address indexed newOwner`|
 
 ---
 
@@ -592,7 +604,7 @@ anvil
 ## Testing
 
 ```shell
-# Run all 266 tests
+# Run all 301 tests
 forge test
 
 # Verbose output with traces
@@ -610,15 +622,20 @@ forge snapshot
 | `BaseEscrowTest.t.sol`              | 59    | Escrow creation, funding, KYC, token allowlist, ownership, tiers       |
 | `DisputeEscrowTest.t.sol`           | 42    | Dispute lifecycle, escalation, timeouts, reputation, rate limiting     |
 | `PaymentCommitmentTest.t.sol`       | 36    | PC creation, collateral funding, fulfillment, default claims, maturity |
+| `PauseTest.t.sol`                   | 27    | Emergency pause access control, inflow blocking, settlement during pause, E2E flows |
 | `TradeInfraEscrowTest.t.sol`        | 22    | Delivery confirmation, oracle settlement, fee tiers, full flows        |
-| `ChainlinkOracleTest.t.sol`         | 20    | Chainlink Functions integration, callbacks, re-requests                |
+| `ChainlinkOracleTest.t.sol`         | 22    | Chainlink Functions integration, callbacks, re-requests, ownership     |
+| `SecurityFixesTest`*                | 21    | Configurable bounds, fee recipient/arbiter setters, access control     |
 | `DeployCredenceTest.t.sol`          | 18    | Deploy script, env overrides, post-deploy interactions, tier config    |
+| `ProtocolArbiterMultisigTest.t.sol` | 18    | Multisig proposals, approvals, execution, revocation, governance       |
 | `ReceivableTest.t.sol`              | 16    | NFT minting, settlement, metadata, failure resilience                  |
 | `DocumentCommitmentTest.t.sol`      | 14    | Merkle tree (1-4 leaves), document anchoring, oracle gating            |
-| `ProtocolArbiterMultisigTest.t.sol` | 12    | Multisig proposals, approvals, execution, revocation                   |
-| `PauseTest.t.sol`                   | 27    | Emergency pause access control, inflow blocking, settlement during pause, E2E flows |
+| `SettledNFTTransferTest`*           | 4     | Settled receivable transfer blocking, active transfer, mint after settle|
+| `OracleMerkleRootTest`*             | 2     | Oracle verifies merkle root, rejects tradeDataHash                     |
 
-**266 tests, 0 failures.**
+*\* Test contracts in `SecurityFixesTest.t.sol`*
+
+**301 tests, 0 failures.**
 
 > Tests run with `jobs = 1` (set in `foundry.toml`). The deploy test suite uses `vm.setEnv` to test environment variable overrides; parallel execution would create race conditions on the shared OS process environment.
 
@@ -685,12 +702,14 @@ The deploy script deploys the oracle, `TradeInfraEscrow`, and `CredenceReceivabl
 - **Phantom escrow prevention** — the `escrowExists` mapping blocks operations on non-existent IDs.
 - **Fee snapshot** — fee rate is locked at escrow creation; no mid-flight manipulation is possible.
 - **Dispute rate limiting** — users with 10+ disputes or >50% loss rate (3+ losses) are blocked from raising further disputes.
-- **Amount bounds** — `MIN_ESCROW_AMOUNT = 1,000` prevents dust attacks. Deployment tier caps prevent overexposure.
+- **Amount bounds** — configurable `minEscrowAmount` (default 0.01 ether) prevents dust attacks. Configurable tier limits via `setTierLimits()` support any token decimals. Deployment tier caps prevent overexposure.
 - **Non-custodial** — no admin function can unilaterally drain funds; all fund movements require valid state transitions.
 - **Emergency pause** — owner can pause capital inflow (`createEscrow`, `fund`, `fulfillCommitment`) while leaving settlement, disputes, and safety-valve functions operational. Pausing never traps funds.
 - **Resilient minting** — receivable NFT minting uses `try/catch` so a failing minter never blocks escrow operations.
 - **Document gating** — oracle confirmation requires prior document commitment, preventing settlement without a verifiable document trail.
 - **Collateral bounds** — Payment Commitment collateral is bounded to 10-50% of face value, preventing both under-collateralization and economic equivalence to Cash Lock.
+- **Settled receivable lock** — settled receivable NFTs are non-transferable, preventing double-claim and stale-obligation trading.
+- **Mutable admin addresses** — `feeRecipient` and `protocolArbiter` can be updated post-deployment via owner setters, enabling key rotation without redeployment.
 
 ### Audit Status
 
@@ -724,8 +743,9 @@ For responsible disclosure of security vulnerabilities, see [SECURITY.md](SECURI
 - [x] Multi-signature protocol arbiter (`ProtocolArbiterMultisig`)
 - [x] Progressive deployment tiers (TESTNET through MATURE)
 - [x] Automated deployment script with environment configuration
-- [x] 266 tests with full feature coverage
+- [x] 301 tests with full feature coverage
 - [x] Emergency pause mechanism (OpenZeppelin Pausable)
+- [x] Security hardening: configurable bounds, mutable admin addresses, settled NFT locks, oracle merkle root verification, multisig governance actions
 - [x] Subgraph schema for trade history and analytics
 - [ ] Frontend interface for trade participants
 - [ ] Testnet deployment (Sepolia / Base Sepolia)

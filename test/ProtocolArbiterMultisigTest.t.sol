@@ -97,7 +97,7 @@ contract ProtocolArbiterMultisigTest is EscrowTestBase {
         uint256 proposalId = multisig.proposeResolution(id, 1);
 
         // Only 1 approval — threshold is 2 — should not be executed
-        (,, uint256 createdAt, bool executed, uint256 approvalCount) = multisig.proposals(proposalId);
+        (,, uint256 createdAt, bool executed, uint256 approvalCount,,) = multisig.proposals(proposalId);
         assertFalse(executed);
         assertEq(approvalCount, 1);
         assertTrue(createdAt > 0);
@@ -163,7 +163,7 @@ contract ProtocolArbiterMultisigTest is EscrowTestBase {
         vm.prank(signer1);
         multisig.revokeApproval(proposalId);
 
-        (,,,, uint256 approvalCount) = multisig.proposals(proposalId);
+        (,,,, uint256 approvalCount,,) = multisig.proposals(proposalId);
         assertEq(approvalCount, 0);
         assertFalse(multisig.hasApproved(proposalId, signer1));
     }
@@ -238,5 +238,86 @@ contract ProtocolArbiterMultisigTest is EscrowTestBase {
         emit ProtocolArbiterMultisig.ResolutionExecuted(proposalId, id, 1);
         vm.prank(signer2);
         multisig.approveResolution(proposalId);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Governance Actions — addSigner / removeSigner via proposal
+    // ═══════════════════════════════════════════════════════════════════
+
+    function test_GovernanceAction_AddSigner() public {
+        address newSigner = makeAddr("newSigner");
+
+        // Propose addSigner via governance
+        bytes memory callData = abi.encodeWithSignature("addSigner(address)", newSigner);
+        vm.prank(signer1);
+        uint256 proposalId = multisig.proposeGovernanceAction(address(multisig), callData);
+
+        // Approve to meet threshold
+        vm.prank(signer2);
+        multisig.approveResolution(proposalId);
+
+        // Verify signer was added
+        assertTrue(multisig.isSigner(newSigner));
+        assertEq(multisig.getSignerCount(), 4);
+    }
+
+    function test_GovernanceAction_RemoveSigner() public {
+        // First add a 4th signer so we can safely remove one (3 signers, threshold 2)
+        address newSigner = makeAddr("newSigner");
+        bytes memory addCallData = abi.encodeWithSignature("addSigner(address)", newSigner);
+        vm.prank(signer1);
+        uint256 addId = multisig.proposeGovernanceAction(address(multisig), addCallData);
+        vm.prank(signer2);
+        multisig.approveResolution(addId);
+        assertEq(multisig.getSignerCount(), 4);
+
+        // Now remove signer3
+        bytes memory removeCallData = abi.encodeWithSignature("removeSigner(address)", signer3);
+        vm.prank(signer1);
+        uint256 removeId = multisig.proposeGovernanceAction(address(multisig), removeCallData);
+        vm.prank(signer2);
+        multisig.approveResolution(removeId);
+
+        assertFalse(multisig.isSigner(signer3));
+        assertEq(multisig.getSignerCount(), 3);
+    }
+
+    function testRevert_GovernanceAction_NonSigner() public {
+        bytes memory callData = abi.encodeWithSignature("addSigner(address)", makeAddr("x"));
+        vm.expectRevert(ProtocolArbiterMultisig.NotSigner.selector);
+        vm.prank(stranger);
+        multisig.proposeGovernanceAction(address(multisig), callData);
+    }
+
+    function testRevert_DirectAddSigner_StillReverts() public {
+        vm.expectRevert(ProtocolArbiterMultisig.NotSigner.selector);
+        vm.prank(signer1);
+        multisig.addSigner(makeAddr("x"));
+    }
+
+    function testRevert_DirectRemoveSigner_StillReverts() public {
+        vm.expectRevert(ProtocolArbiterMultisig.NotSigner.selector);
+        vm.prank(signer1);
+        multisig.removeSigner(signer3);
+    }
+
+    function test_GovernanceAction_NewSignerCanPropose() public {
+        // Add a new signer via governance
+        address newSigner = makeAddr("newSigner");
+        bytes memory callData = abi.encodeWithSignature("addSigner(address)", newSigner);
+        vm.prank(signer1);
+        uint256 proposalId = multisig.proposeGovernanceAction(address(multisig), callData);
+        vm.prank(signer2);
+        multisig.approveResolution(proposalId);
+
+        // New signer can now propose a resolution
+        uint256 escrowId = _escalatedETHEscrow();
+        vm.prank(newSigner);
+        uint256 resId = multisig.proposeResolution(escrowId, 1);
+
+        // Verify proposal was created
+        (uint256 eid, uint8 ruling,,,,,) = multisig.proposals(resId);
+        assertEq(eid, escrowId);
+        assertEq(ruling, 1);
     }
 }
