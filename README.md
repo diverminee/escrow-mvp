@@ -427,6 +427,31 @@ Tiers can only be upgraded (never downgraded) by the contract owner via `upgrade
 | `getUserTier(addr)`                                           | View             | Return UserTier enum                                |
 | `getUserTierName(addr)`                                       | View             | Return tier as human-readable string                |
 | `getReceivableTokenId(id)`                                    | View             | Return receivable NFT token ID                      |
+| `canRaiseDispute(user)`                                       | View             | Check if user is eligible to raise disputes         |
+
+### `ProtocolArbiterMultisig`
+
+| Function                                     | Access   | Description                                              |
+| -------------------------------------------- | -------- | -------------------------------------------------------- |
+| `proposeResolution(escrowId, ruling)`         | Signer   | Create a resolution proposal (auto-approves for proposer)|
+| `approveResolution(proposalId)`               | Signer   | Approve an existing proposal                             |
+| `revokeApproval(proposalId)`                  | Signer   | Withdraw approval before threshold is reached            |
+| `addSigner(signer)`                           | Self     | Add a new signer (executed via proposal)                 |
+| `removeSigner(signer)`                        | Self     | Remove a signer (executed via proposal)                  |
+| `getSignerCount()`                            | View     | Return current number of signers                         |
+| `hasApproved(proposalId, signer)`             | View     | Check if a signer has approved a proposal                |
+
+Proposals expire after 7 days (`PROPOSAL_EXPIRY`). Execution is automatic when the approval threshold is met.
+
+### `CentralizedTradeOracle`
+
+| Function                                               | Access | Description                                          |
+| ------------------------------------------------------ | ------ | ---------------------------------------------------- |
+| `submitVerification(hash, result)`                      | Owner  | Submit trade verification result                     |
+| `submitVerification(hash, result, documentFlags)`       | Owner  | Submit verification with per-document flag breakdown |
+| `verifyTradeData(hash)`                                 | View   | Query verification status for a trade data hash      |
+| `getDocumentVerification(merkleRoot)`                   | View   | Return overall result and per-document flags         |
+| `transferOwnership(newOwner)`                           | Owner  | Transfer oracle admin rights                         |
 
 ### Constructor
 
@@ -449,6 +474,80 @@ constructor(
 | **USDT** | Sepolia       | `0x7169D38820dfd117C3FA1f22a697dBA58d90BA06` |
 
 The allowlist is a soft recommendation layer. The escrow contract accepts any ERC20. The owner can add tokens via `addApprovedToken()` as the stablecoin landscape evolves.
+
+### Events
+
+All state transitions emit indexed events for off-chain indexing, analytics, and frontend integration.
+
+**BaseEscrow**
+
+| Event                    | Parameters                                                                                    |
+| ------------------------ | --------------------------------------------------------------------------------------------- |
+| `EscrowCreated`          | `uint256 indexed escrowId, address indexed buyer, address indexed seller, uint256 amount, address token, uint8 mode, uint256 faceValue` |
+| `EscrowFunded`           | `uint256 indexed escrowId, address indexed buyer, uint256 amount, uint256 timestamp`          |
+| `EscrowSettled`          | `uint256 indexed escrowId, address indexed recipient, uint256 amount, uint256 fee`            |
+| `EscrowRefunded`         | `uint256 indexed escrowId, address indexed recipient, uint256 amount`                         |
+| `DocumentsCommitted`     | `uint256 indexed escrowId, bytes32 merkleRoot, uint256 timestamp`                             |
+| `ReceivableMinted`       | `uint256 indexed escrowId, uint256 tokenId`                                                   |
+| `ReceivableMintFailed`   | `uint256 indexed escrowId, bytes reason`                                                      |
+| `KYCStatusUpdated`       | `address indexed user, bool status`                                                           |
+| `ApprovedTokenAdded`     | `address indexed token`                                                                       |
+| `ApprovedTokenRemoved`   | `address indexed token`                                                                       |
+| `OwnershipTransferred`   | `address indexed oldOwner, address indexed newOwner`                                          |
+| `DeploymentTierUpgraded` | `uint8 indexed oldTier, uint8 indexed newTier, uint256 maxAmount`                             |
+| `ReceivableMinterUpdated`| `address indexed oldMinter, address indexed newMinter`                                        |
+
+**DisputeEscrow**
+
+| Event               | Parameters                                                                                      |
+| ------------------- | ----------------------------------------------------------------------------------------------- |
+| `DisputeRaised`     | `uint256 indexed escrowId, address indexed initiator, uint256 deadline, uint256 timestamp`       |
+| `DisputeResolved`   | `uint256 indexed escrowId, uint8 ruling, address indexed arbiter, uint256 timestamp`             |
+| `DisputeEscalated`  | `uint256 indexed escrowId, address indexed escalatedBy, uint256 newDeadline, uint256 timestamp`  |
+| `EscalationResolved`| `uint256 indexed escrowId, uint8 indexed ruling, uint256 timestamp`                              |
+| `TimeoutClaimed`    | `uint256 indexed escrowId, address indexed claimedBy, address indexed refundedTo, uint256 timestamp` |
+
+**TradeInfraEscrow**
+
+| Event                  | Parameters                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------- |
+| `DeliveryConfirmed`    | `uint256 indexed escrowId, address indexed buyer, uint256 timestamp`                        |
+| `OracleConfirmed`      | `uint256 indexed escrowId, bytes32 merkleRoot, uint256 timestamp`                           |
+| `CommitmentFulfilled`  | `uint256 indexed escrowId, address indexed buyer, uint256 remainingAmount, uint256 timestamp`|
+| `CommitmentDefaulted`  | `uint256 indexed escrowId, address indexed seller, uint256 collateralAmount, uint256 timestamp` |
+
+**ProtocolArbiterMultisig**
+
+| Event                | Parameters                                                                      |
+| -------------------- | ------------------------------------------------------------------------------- |
+| `ResolutionProposed` | `uint256 indexed proposalId, uint256 indexed escrowId, uint8 ruling, address indexed proposer` |
+| `ResolutionApproved` | `uint256 indexed proposalId, address indexed approver`                          |
+| `ResolutionRevoked`  | `uint256 indexed proposalId, address indexed revoker`                           |
+| `ResolutionExecuted` | `uint256 indexed proposalId, uint256 indexed escrowId, uint8 ruling`            |
+| `SignerAdded`        | `address indexed signer`                                                        |
+| `SignerRemoved`      | `address indexed signer`                                                        |
+
+**CredenceReceivable**
+
+| Event                 | Parameters                                                              |
+| --------------------- | ----------------------------------------------------------------------- |
+| `ReceivableMintedNFT` | `uint256 indexed tokenId, uint256 indexed escrowId, address indexed seller` |
+| `ReceivableSettledNFT`| `uint256 indexed tokenId, uint256 indexed escrowId`                     |
+
+**CentralizedTradeOracle**
+
+| Event                  | Parameters                                      |
+| ---------------------- | ----------------------------------------------- |
+| `TradeVerified`        | `bytes32 indexed tradeDataHash, bool result`    |
+| `OwnershipTransferred` | `address indexed previousOwner, address indexed newOwner` |
+
+**ChainlinkTradeOracle**
+
+| Event                    | Parameters                                               |
+| ------------------------ | -------------------------------------------------------- |
+| `VerificationRequested`  | `bytes32 indexed tradeDataHash, bytes32 indexed requestId` |
+| `VerificationFulfilled`  | `bytes32 indexed tradeDataHash, bool result`             |
+| `SourceUpdated`          | `string newSource`                                       |
 
 ---
 
@@ -598,6 +697,7 @@ Static analysis has been performed using [Aderyn](https://github.com/Cyfrin/ader
 - The `protocolArbiter` should be a multisig (the included `ProtocolArbiterMultisig` or a Gnosis Safe), not a single EOA.
 - Contracts are immutable — re-deployment is required for upgrades.
 - Receivable NFTs represent protocol-internal claims and do not constitute legal instruments without off-chain legal framework.
+- `ITradeOracle` interface only defines `verifyTradeData()`. Extended functions like `getDocumentVerification()` and `submitVerification()` with document flags are available on `CentralizedTradeOracle` directly but not abstracted behind the interface. `ChainlinkTradeOracle` does not support per-document flags.
 
 ---
 
@@ -616,11 +716,12 @@ Static analysis has been performed using [Aderyn](https://github.com/Cyfrin/ader
 - [x] Progressive deployment tiers (TESTNET through MATURE)
 - [x] Automated deployment script with environment configuration
 - [x] 239 tests with full feature coverage
+- [x] Subgraph schema for trade history and analytics
 - [ ] Frontend interface for trade participants
 - [ ] Testnet deployment (Sepolia / Base Sepolia)
 - [ ] Third-party security audit
 - [ ] Mainnet deployment
-- [ ] Subgraph indexing for trade history and analytics
+- [ ] Subgraph mapping handlers and deployment
 - [ ] Secondary market integration for receivable NFTs
 - [ ] Multi-chain deployment (Arbitrum, Base, Optimism)
 
