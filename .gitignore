@@ -23,6 +23,9 @@ docs/
 # Claude Code — personal scratch (not project knowledge)
 .claude/scratch.md
 
+# Local-only analysis docs (not committed)
+TRADE_FINANCE_ANALYSIS.md
+
 # Frontend (web/)
 web/.next/
 web/.env.local
