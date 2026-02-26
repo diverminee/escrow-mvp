@@ -10,7 +10,12 @@ node_modules/
 # Ignores development broadcast logs
 !/broadcast
 /broadcast/*/31337/
+/broadcast/*/84532/
 /broadcast/**/dry-run/
+
+# Deployment files (contain addresses)
+.env.deploy
+.env.deployed
 
 # Docs
 docs/
