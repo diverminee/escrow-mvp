@@ -136,6 +136,27 @@ contract ChainlinkTradeOracle is FunctionsClient, ITradeOracle {
         return verificationResults[tradeDataHash];
     }
 
+    /// @notice Verify trade data with individual document hashes
+    /// @dev For Chainlink oracle, delegates to stored verification result
+    /// @param tradeDataHash Original trade data hash
+    /// @param invoiceHash Hash of commercial invoice
+    /// @param bolHash Hash of bill of lading
+    /// @param packingHash Hash of packing list
+    /// @param cooHash Hash of certificate of origin
+    /// @return bool True if trade data is verified
+    function verifyTradeDataWithDocuments(
+        bytes32 tradeDataHash,
+        bytes32 invoiceHash,
+        bytes32 bolHash,
+        bytes32 packingHash,
+        bytes32 cooHash
+    ) external view override returns (bool) {
+        // Chainlink oracle verifies the tradeDataHash, individual doc hashes
+        // are verified off-chain by the JS source
+        if (!hasResult[tradeDataHash]) return false;
+        return verificationResults[tradeDataHash];
+    }
+
     /// @notice Check if a verification request is pending for a trade
     /// @param tradeDataHash The trade data hash
     /// @return pending True if a request is in-flight
