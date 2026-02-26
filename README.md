@@ -10,30 +10,54 @@ The protocol introduces two settlement modes — full cash-lock escrow and parti
 
 ## Table of Contents
 
-- [The Problem We Solve](#the-problem-we-solve)
-- [Why Previous Blockchain Trade Platforms Failed](#why-previous-blockchain-trade-platforms-failed)
-- [How Credence Is Different](#how-credence-is-different)
-- [Protocol Overview](#protocol-overview)
-- [Architecture](#architecture)
-- [Settlement Modes](#settlement-modes)
-  - [Cash Lock](#cash-lock)
-  - [Payment Commitment](#payment-commitment)
-- [Document Commitment](#document-commitment)
-- [Trade Receivable NFTs](#trade-receivable-nfts)
-- [KYC and Access Control](#kyc-and-access-control)
-- [Oracle Integration](#oracle-integration)
-- [Reputation and Fee Tiers](#reputation-and-fee-tiers)
-- [Dispute Resolution](#dispute-resolution)
-- [Trade Standards Reference (UCP 600 / URDTT)](#trade-standards-reference-ucp-600--urdtt)
-- [Deployment Tiers](#deployment-tiers)
-- [Contract Reference](#contract-reference)
-- [Getting Started](#getting-started)
-- [Testing](#testing)
-- [Deployment](#deployment)
-- [Security](#security)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [License](#license)
+- [Credence](#credence)
+  - [Table of Contents](#table-of-contents)
+  - [The Problem We Solve](#the-problem-we-solve)
+  - [Why Previous Blockchain Trade Platforms Failed](#why-previous-blockchain-trade-platforms-failed)
+  - [How Credence Is Different](#how-credence-is-different)
+  - [Protocol Overview](#protocol-overview)
+  - [Architecture](#architecture)
+  - [Settlement Modes](#settlement-modes)
+    - [Cash Lock](#cash-lock)
+    - [Payment Commitment](#payment-commitment)
+  - [Document Commitment](#document-commitment)
+  - [Trade Receivable NFTs](#trade-receivable-nfts)
+  - [KYC and Access Control](#kyc-and-access-control)
+  - [Oracle Integration](#oracle-integration)
+    - [CentralizedTradeOracle](#centralizedtradeoracle)
+    - [ChainlinkTradeOracle](#chainlinktradeoracle)
+  - [Reputation and Fee Tiers](#reputation-and-fee-tiers)
+  - [Dispute Resolution](#dispute-resolution)
+  - [Trade Standards Reference (UCP 600 / URDTT)](#trade-standards-reference-ucp-600--urdtt)
+    - [UCP 600 Mapping](#ucp-600-mapping)
+    - [ICC Digital Trade Standards (URDTT)](#icc-digital-trade-standards-urdtt)
+    - [Intentional Departures from UCP 600](#intentional-departures-from-ucp-600)
+    - [For Compliance Officers](#for-compliance-officers)
+  - [Deployment Tiers](#deployment-tiers)
+  - [Contract Reference](#contract-reference)
+    - [`TradeInfraEscrow`](#tradeinfraescrow)
+    - [`ProtocolArbiterMultisig`](#protocolarbitermultisig)
+    - [`CentralizedTradeOracle`](#centralizedtradeoracle-1)
+    - [Constructor](#constructor)
+    - [Supported Tokens](#supported-tokens)
+    - [Events](#events)
+  - [Getting Started](#getting-started)
+    - [Prerequisites](#prerequisites)
+    - [Install](#install)
+    - [Build](#build)
+    - [Local Node](#local-node)
+  - [Testing](#testing)
+  - [Deployment](#deployment)
+    - [Environment Variables](#environment-variables)
+    - [Local (Anvil)](#local-anvil)
+    - [Testnet / Mainnet](#testnet--mainnet)
+  - [Security](#security)
+    - [Design Safeguards](#design-safeguards)
+    - [Audit Status](#audit-status)
+    - [Known Limitations](#known-limitations)
+  - [Roadmap](#roadmap)
+  - [Contributing](#contributing)
+  - [License](#license)
 
 ---
 
@@ -695,11 +719,11 @@ forge snapshot
 | `SettledNFTTransferTest`*           | 4     | Settled receivable transfer blocking, active transfer, mint after settle|
 | `OracleMerkleRootTest`*             | 2     | Oracle verifies merkle root, rejects tradeDataHash                     |
 
-*\* Test contracts in `SecurityFixesTest.t.sol`*
+*`SettledNFTTransferTest` and `OracleMerkleRootTest` are defined inside `SecurityFixesTest.t.sol`*
 
 **301 tests, 0 failures.**
 
-> Tests run with `jobs = 1` (set in `foundry.toml`). The deploy test suite uses `vm.setEnv` to test environment variable overrides; parallel execution would create race conditions on the shared OS process environment.
+> Tests run with `jobs = 1` (set in `foundry.toml`). *Note: Foundry does not support the `jobs` config option and will emit a warning — the setting is preserved for documentation purposes. The deploy test suite uses `vm.setEnv` to test environment variable overrides; parallel execution would create race conditions on the shared OS process environment.*
 
 ---
 
@@ -748,7 +772,7 @@ The deploy script deploys the oracle, `TradeInfraEscrow`, and `CredenceReceivabl
 - [ ] KYC-onboard initial traders via `batchSetKYCStatus()`
 - [ ] Transfer oracle ownership to operational multisig: `oracle.transferOwnership(multisig)`
 - [ ] Transfer escrow ownership to governance multisig: `escrow.transferOwnership(multisig)`
-- [ ] Upgrade deployment tier as volume grows: `escrow.upgradeTier(LAUNCH)`
+- [ ] Upgrade deployment tier as volume grows: `escrow.upgradeTier(GROWTH)` → `escrow.upgradeTier(MATURE)`
 - [ ] Verify contracts on Etherscan using `--verify` flag
 
 ---
