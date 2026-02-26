@@ -9,11 +9,9 @@ env:
   FOUNDRY_PROFILE: ci
 
 jobs:
-  check:
-    strategy:
-      fail-fast: true
-
-    name: Foundry project
+  # Local tests (always run)
+  test-local:
+    name: Local Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,21 +21,61 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
 
-      - name: Show Forge version
-        run: |
-          forge --version
-
       - name: Run Forge fmt
-        run: |
-          forge fmt --check
-        id: fmt
+        run: forge fmt --check
 
       - name: Run Forge build
-        run: |
-          forge build --sizes
-        id: build
+        run: forge build --sizes
 
       - name: Run Forge tests
+        run: forge test -vvv
+
+  # Fork tests (only when secret is available)
+  test-fork:
+    name: Fork Tests
+    needs: test-local
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || secrets.BASE_SEPOLIA_RPC_URL != ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Run Forge Fork Tests
+        env:
+          FOUNDRY_FORK_URL: ${{ secrets.BASE_SEPOLIA_RPC_URL }}
         run: |
-          forge test -vvv
-        id: test
+          if [ -z "$FOUNDRY_FORK_URL" ]; then
+            echo "Skipping fork tests - no RPC URL configured"
+            exit 0
+          fi
+          # Exclude deployment tests - they test local deployment, not fork interactions
+          forge test --no-match-path "test/DeployCredenceTest.t.sol" -vvv
+
+  # Deployment (manual trigger only)
+  deploy-sepolia:
+    name: Deploy to Base Sepolia
+    needs: test-fork
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Deploy to Base Sepolia
+        env:
+          PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+          SEPOLIA_RPC_URL: ${{ secrets.BASE_SEPOLIA_RPC_URL }}
+        run: |
+          forge script script/DeployCredence.s.sol \
+            --rpc-url $SEPOLIA_RPC_URL \
+            --broadcast \
+            --verify \
+            --private-key $PRIVATE_KEY

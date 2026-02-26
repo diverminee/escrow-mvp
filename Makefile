@@ -1,4 +1,4 @@
-.PHONY: build test test-v snapshot fmt clean deploy-local deploy-sepolia deploy-chainlink sync-abi sync-env build-web dev-web
+.PHONY: build test test-v test-fork test-fork-v snapshot fmt clean deploy-local deploy-sepolia deploy-sepolia-test deploy-chainlink sync-abi sync-env build-web dev-web
 
 build:
 	forge build
@@ -11,6 +11,21 @@ test-v:
 
 test-deploy:
 	forge test --match-path test/DeployCredenceTest.t.sol -vvv
+
+# Fork tests (requires FOUNDRY_FORK_URL env var)
+test-fork:
+	@if [ -z "$$FOUNDRY_FORK_URL" ]; then \
+		echo "Error: FOUNDRY_FORK_URL not set. Run: export FOUNDRY_FORK_URL=..."; \
+		exit 1; \
+	fi
+	FOUNDRY_FORK_URL=$$FOUNDRY_FORK_URL forge test
+
+test-fork-v:
+	@if [ -z "$$FOUNDRY_FORK_URL" ]; then \
+		echo "Error: FOUNDRY_FORK_URL not set. Run: export FOUNDRY_FORK_URL=..."; \
+		exit 1; \
+	fi
+	FOUNDRY_FORK_URL=$$FOUNDRY_FORK_URL forge test -vvv
 
 snapshot:
 	forge snapshot
