@@ -6,6 +6,7 @@ import {BaseEscrow} from "./BaseEscrow.sol";
 
 /// @title Dispute Escrow Contract
 /// @notice Extends base escrow with dispute resolution functionality
+/// @dev SECURITY FIX: Added split ruling (ruling 3) for partial refunds
 abstract contract DisputeEscrow is BaseEscrow {
     // ============ Errors ============
     error NotAParty();
@@ -13,10 +14,17 @@ abstract contract DisputeEscrow is BaseEscrow {
     error NotProtocolArbiter();
     error TooManyDisputes();
     error InvalidRuling();
+    error InvalidSplitPercentage();
     error ArbiterDeadlineExpired();
     error DisputeNotExpired();
     error EscalationNotExpired();
     error NotEscalated();
+
+    // ============ SECURITY FIX: Split Ruling ============
+    /// @notice Minimum split percentage (10%)
+    uint256 public constant MIN_SPLIT_PERCENTAGE = 10;
+    /// @notice Maximum split percentage (90%)
+    uint256 public constant MAX_SPLIT_PERCENTAGE = 90;
 
     // ============ Constructor ============
     constructor(address _oracleAddress, address _feeRecipient, address _protocolArbiter)
@@ -165,5 +173,88 @@ abstract contract DisputeEscrow is BaseEscrow {
         }
 
         return true;
+    }
+
+    // ============ SECURITY FIX: Split Ruling Implementation ============
+
+    /// @notice Resolve dispute with split - partial refund to buyer, partial to seller
+    /// @param _escrowId ID of the disputed escrow
+    /// @param _buyerPercentage Percentage going to buyer (10-90), remainder goes to seller
+    function resolveDisputeWithSplit(uint256 _escrowId, uint256 _buyerPercentage) 
+        external 
+        onlyArbiter(_escrowId) 
+        nonReentrant 
+    {
+        if (_buyerPercentage < MIN_SPLIT_PERCENTAGE || _buyerPercentage > MAX_SPLIT_PERCENTAGE) {
+            revert InvalidSplitPercentage();
+        }
+
+        EscrowTypes.EscrowTransaction storage txn = escrows[_escrowId];
+        if (txn.state != EscrowTypes.State.DISPUTED) revert InvalidState();
+        if (block.timestamp > txn.disputeDeadline) {
+            revert ArbiterDeadlineExpired();
+        }
+
+        // Mark dispute as resolved (can't resolve again)
+        txn.state = EscrowTypes.State.RELEASED;
+
+        uint256 payoutAmount = txn.commitmentFulfilled ? txn.amount : txn.collateralAmount;
+        uint256 feeAmount = (payoutAmount * txn.feeRate) / 1000;
+        uint256 totalAmount = payoutAmount - feeAmount;
+
+        // Calculate split
+        uint256 buyerAmount = (totalAmount * _buyerPercentage) / 100;
+        uint256 sellerAmount = totalAmount - buyerAmount;
+
+        // Update reputation - partial loss for both
+        disputesLost[txn.buyer]++;
+        disputesLost[txn.seller]++;
+
+        // Transfer funds
+        _transferFunds(txn.token, txn.buyer, buyerAmount);
+        _transferFunds(txn.token, txn.seller, sellerAmount);
+        _transferFunds(txn.token, feeRecipient, feeAmount);
+
+        emit DisputeResolved(_escrowId, 3, msg.sender, block.timestamp); // 3 = split ruling
+    }
+
+    /// @notice Resolve escalation with split
+    /// @param _escrowId ID of the escalated escrow
+    /// @param _buyerPercentage Percentage going to buyer (10-90)
+    function resolveEscalationWithSplit(uint256 _escrowId, uint256 _buyerPercentage) 
+        external 
+        nonReentrant 
+    {
+        if (msg.sender != protocolArbiter) revert NotProtocolArbiter();
+        if (!escrowExists[_escrowId]) revert EscrowNotFound();
+        
+        if (_buyerPercentage < MIN_SPLIT_PERCENTAGE || _buyerPercentage > MAX_SPLIT_PERCENTAGE) {
+            revert InvalidSplitPercentage();
+        }
+
+        EscrowTypes.EscrowTransaction storage txn = escrows[_escrowId];
+        if (txn.state != EscrowTypes.State.ESCALATED) revert NotEscalated();
+
+        // Mark as resolved
+        txn.state = EscrowTypes.State.RELEASED;
+
+        uint256 payoutAmount = txn.commitmentFulfilled ? txn.amount : txn.collateralAmount;
+        uint256 feeAmount = (payoutAmount * txn.feeRate) / 1000;
+        uint256 totalAmount = payoutAmount - feeAmount;
+
+        // Calculate split
+        uint256 buyerAmount = (totalAmount * _buyerPercentage) / 100;
+        uint256 sellerAmount = totalAmount - buyerAmount;
+
+        // Update reputation
+        disputesLost[txn.buyer]++;
+        disputesLost[txn.seller]++;
+
+        // Transfer funds
+        _transferFunds(txn.token, txn.buyer, buyerAmount);
+        _transferFunds(txn.token, txn.seller, sellerAmount);
+        _transferFunds(txn.token, feeRecipient, feeAmount);
+
+        emit EscalationResolved(_escrowId, 3, block.timestamp);
     }
 }
