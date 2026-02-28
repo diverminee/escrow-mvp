@@ -15,7 +15,7 @@ export function AddressDisplay({ address }: { address: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="inline-flex items-center gap-1 rounded bg-gray-800 px-2 py-1 font-mono text-sm text-gray-300 transition hover:bg-gray-700"
+      className="inline-flex items-center gap-1 rounded bg-[#07203F] px-2 py-1 font-mono text-sm text-[#D9AA90] transition hover:bg-[#0A2A52]"
       title={address}
     >
       {truncateAddress(address)}

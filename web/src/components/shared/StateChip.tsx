@@ -2,11 +2,21 @@ import { STATE_LABELS, STATE_COLORS } from "@/lib/constants";
 
 export function StateChip({ state }: { state: number }) {
   const label = STATE_LABELS[state] ?? "Unknown";
-  const color = STATE_COLORS[state] ?? "bg-gray-500";
+  const color = STATE_COLORS[state] ?? "#A68A7A";
 
   return (
     <span
-      className={`${color} inline-block rounded-full px-3 py-1 text-xs font-semibold text-white`}
+      style={{
+        backgroundColor: color,
+        color: "#ffffff",
+        display: "inline-block",
+        borderRadius: "9999px",
+        padding: "0.25rem 0.75rem",
+        fontSize: "0.75rem",
+        fontWeight: 600,
+        fontFamily: "'IBM Plex Mono', monospace",
+        letterSpacing: "0.05em",
+      }}
     >
       {label}
     </span>

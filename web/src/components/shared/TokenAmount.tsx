@@ -10,7 +10,7 @@ export function TokenAmount({
 }) {
   const symbol = token === ZERO_ADDRESS ? "ETH" : "Token";
   return (
-    <span className="font-mono">
+    <span className="font-mono text-[#D9AA90]">
       {formatEther(amount)} {symbol}
     </span>
   );

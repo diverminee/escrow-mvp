@@ -41,7 +41,7 @@ export function useFundEscrow(chainId: number) {
     }
   }
 
-  function fundAfterApproval(escrowId: bigint) {
+  function fundAfterApproval(escrowId: bigint, token: `0x${string}`, amount: bigint) {
     if (!contract.address) return;
     writeContract({
       address: contract.address,
