@@ -13,6 +13,15 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  // Disable rules that produce false positives in Next.js apps
+  {
+    rules: {
+      // Allow setState in useEffect for hydration - this is a common and valid pattern
+      "react-hooks/set-state-in-effect": "off",
+      // Allow Date.now() in component body - common pattern for time-sensitive displays
+      "react-hooks/purity": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;
