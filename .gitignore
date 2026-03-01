@@ -25,9 +25,6 @@ docs/
 .env.deployed
 .env.example
 
-# Claude Code — personal scratch (not project knowledge)
-.claude/scratch.md
-
 # Local-only analysis docs (not committed)
 TRADE_FINANCE_ANALYSIS.md
 
