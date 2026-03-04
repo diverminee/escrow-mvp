@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useAccount, useChainId } from "wagmi";
-import { parseEther, isAddress } from "viem";
+import { parseEther, isAddress, keccak256, encodeAbiParameters } from "viem";
 import { useCreateEscrow } from "@/hooks/useCreateEscrow";
 import { useUserStats } from "@/hooks/useUserStats";
+import { useEscrowCount } from "@/hooks/useEscrowList";
+import { useCheckEscrowRequirements } from "@/hooks/useCheckEscrowRequirements";
 import { EscrowMode } from "@/types/escrow";
 import { AddressDisplay } from "@/components/shared/AddressDisplay";
 import { TierBadge } from "@/components/shared/TierBadge";
@@ -38,22 +40,71 @@ function CreateEscrowModal({
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
   
-  // Custom hooks
-  const { createEscrow, hash, isPending, isConfirming, isSuccess, error } = useCreateEscrow(chainId);
-  const { tier, feeRate } = useUserStats(address, chainId);
-
-  // Form state
+  // Form state - MUST be declared before any hooks that use these values
   const [mode, setMode] = useState<EscrowMode>(EscrowMode.CASH_LOCK);
   const [seller, setSeller] = useState("");
   const [arbiter, setArbiter] = useState("");
   const [token, setToken] = useState(TOKENS[0].address);
   const [amount, setAmount] = useState("");
   const [tradeId, setTradeId] = useState("");
-  const [tradeDataHash, setTradeDataHash] = useState("0x0");
+  const [tradeDataHash, setTradeDataHash] = useState("0x0000000000000000000000000000000000000000000000000000000000000000");
   const [collateralBps, setCollateralBps] = useState(DEFAULT_COLLATERAL_BPS.toString());
   const [maturityDays, setMaturityDays] = useState(DEFAULT_MATURITY_DAYS.toString());
   const [step, setStep] = useState<"form" | "review" | "success">("form");
   const [errors, setErrors] = useState<{[key: string]: string}>({});
+  
+  // Custom hooks
+  const { createEscrow, hash, isPending, isConfirming, isSuccess, error } = useCreateEscrow(chainId);
+  const { tier, feeRate } = useUserStats(address, chainId);
+  const { count: escrowCount } = useEscrowCount(chainId);
+  
+  // Auto-generate Trade ID based on escrow count (next escrow ID = current count)
+  const autoTradeId = useMemo(() => {
+    return escrowCount > 0 ? BigInt(escrowCount) + 1n : 1n;
+  }, [escrowCount]);
+
+  // Helper function to parse amount to Wei
+  const parseAmountToWei = (tokenAddr: string, amountStr: string): bigint | null => {
+    const tok = TOKENS.find(t => t.address === tokenAddr) || TOKENS[0];
+    try {
+      const decimals = Number(tok.decimals);
+      const value = parseFloat(amountStr);
+      if (isNaN(value) || value <= 0) return null;
+      if (decimals === 18) {
+        return parseEther(amountStr);
+      }
+      return BigInt(Math.floor(value * 10 ** decimals));
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // Helper function to generate trade data hash
+  const generateTradeDataHash = (sellerAddr: string, arbiterAddr: string, tokenAddr: string, amountWei: bigint, tradeIdVal: bigint): `0x${string}` => {
+    const hashInput = encodeAbiParameters(
+      [{ type: "address" }, { type: "address" }, { type: "address" }, { type: "uint256" }, { type: "uint256" }],
+      [sellerAddr as `0x${string}`, arbiterAddr as `0x${string}`, tokenAddr as `0x${string}`, amountWei, tradeIdVal]
+    );
+    return keccak256(hashInput);
+  };
+
+  // Auto-populate tradeId when modal opens (trade data hash will be generated on submit)
+  useEffect(() => {
+    if (isOpen && !tradeId) {
+      setTradeId(autoTradeId.toString());
+    }
+  }, [isOpen, tradeId, autoTradeId]);
+
+  // Pre-flight checks for KYC and contract status (moved after seller state)
+  const { status: requirementStatus, getErrors, canCreateEscrow } = useCheckEscrowRequirements({
+    buyerAddress: address,
+    sellerAddress: seller && isAddress(seller) ? (seller as `0x${string}`) : undefined,
+    chainId,
+    enabled: !!address && !!seller && isAddress(seller),
+  });
+  
+  // Determine if we can proceed with escrow creation
+  const canProceed = canCreateEscrow() && !requirementStatus.isLoading;
 
   // Effect to prevent hydration mismatch
   useEffect(() => {
@@ -147,6 +198,12 @@ function CreateEscrowModal({
     e.preventDefault();
     
     if (validateForm()) {
+      // Generate the trade data hash when moving to review step
+      const amountWei = getAmountInWei();
+      if (amountWei && seller && arbiter && tradeId) {
+        const generatedHash = generateTradeDataHash(seller, arbiter, token, amountWei, BigInt(tradeId));
+        setTradeDataHash(generatedHash);
+      }
       setStep("review");
     }
   };
@@ -395,55 +452,6 @@ function CreateEscrowModal({
                   />
                 </div>
 
-                {/* Trade ID */}
-                <div>
-                  <label 
-                    className="mb-1 block text-sm"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
-                    Trade ID *
-                  </label>
-                  <input
-                    type="number"
-                    value={tradeId}
-                    onChange={(e) => setTradeId(e.target.value)}
-                    placeholder="1"
-                    min="1"
-                    className="w-full rounded-lg border px-3 py-2 focus:outline-none"
-                    style={{ 
-                      borderColor: "var(--border-default)",
-                      backgroundColor: "var(--bg-base)",
-                      color: "var(--text-primary)",
-                    }}
-                    required
-                  />
-                </div>
-
-                {/* Trade Data Hash */}
-                <div>
-                  <label 
-                    className="mb-1 block text-sm"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
-                    Trade Data Hash
-                  </label>
-                  <input
-                    type="text"
-                    value={tradeDataHash}
-                    onChange={(e) => setTradeDataHash(e.target.value)}
-                    placeholder="0x0"
-                    className="w-full rounded-lg border px-3 py-2 font-mono text-xs focus:outline-none"
-                    style={{ 
-                      borderColor: "var(--border-default)",
-                      backgroundColor: "var(--bg-base)",
-                      color: "var(--text-primary)",
-                    }}
-                  />
-                  {errors.tradeDataHash && (
-                    <p className="mt-1 text-xs text-red-400">{errors.tradeDataHash}</p>
-                  )}
-                </div>
-
                 {/* Payment Commitment Fields */}
                 {mode === EscrowMode.PAYMENT_COMMITMENT && (
                   <>
@@ -587,6 +595,18 @@ function CreateEscrowModal({
                       <span style={{ color: "var(--text-secondary)" }}>Trade ID:</span>
                       <span style={{ color: "var(--text-primary)" }}>#{tradeId}</span>
                     </div>
+                    {tradeDataHash && tradeDataHash !== "0x0000000000000000000000000000000000000000000000000000000000000000" && (
+                      <div className="flex flex-col">
+                        <span style={{ color: "var(--text-secondary)" }}>Trade Data Hash:</span>
+                        <span 
+                          className="font-mono text-xs text-right" 
+                          style={{ color: "var(--text-primary)" }}
+                          title={tradeDataHash}
+                        >
+                          {tradeDataHash.slice(0, 18)}...{tradeDataHash.slice(-8)}
+                        </span>
+                      </div>
+                    )}
                     {mode === EscrowMode.PAYMENT_COMMITMENT && (
                       <>
                         <div className="flex justify-between">
@@ -611,9 +631,27 @@ function CreateEscrowModal({
                   </div>
                 </div>
 
+                {/* Pre-flight requirement errors */}
+                {requirementStatus.isLoading ? (
+                  <div className="rounded-lg border border-yellow-800 bg-yellow-900/20 p-3 text-sm text-yellow-400">
+                    Checking escrow requirements...
+                  </div>
+                ) : !canProceed && getErrors().length > 0 && (
+                  <div className="rounded-lg border border-red-800 bg-red-900/20 p-3 text-sm text-red-400">
+                    <p className="font-medium mb-1">Cannot create escrow:</p>
+                    <ul className="list-disc list-inside space-y-1">
+                      {getErrors().map((err, i) => (
+                        <li key={i}>{err}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Transaction error */}
                 {error && (
                   <div className="rounded-lg border border-red-800 bg-red-900/20 p-3 text-sm text-red-400">
-                    Error: {error.message}
+                    <p className="font-medium mb-1">Transaction Failed:</p>
+                    <p>{error}</p>
                   </div>
                 )}
 
@@ -631,7 +669,7 @@ function CreateEscrowModal({
                   </button>
                   <button
                     onClick={handleConfirm}
-                    disabled={isPending || isConfirming}
+                    disabled={isPending || isConfirming || !canProceed}
                     className="flex-1 rounded-lg px-4 py-2 text-white transition hover:opacity-90 disabled:opacity-50"
                     style={{ 
                       backgroundColor: "var(--accent)",
