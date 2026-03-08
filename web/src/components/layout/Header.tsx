@@ -5,12 +5,17 @@ import { ConnectButton } from "@rainbow-me/rainbowkit";
 import Link from "next/link";
 import { useThemeToggle } from "@/components/providers/ThemeProvider";
 import { NetworkSelector } from "@/components/shared/NetworkSelector";
+import { useIsOwner, useKYCStatus } from "@/hooks/useAdmin";
+import { useKYC } from "@/hooks/useKYC";
 import { useState, useEffect, useRef } from "react";
 
 // Custom connected account display component
 function AccountDisplay() {
   const { address, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
+  const isOwner = useIsOwner();
+  const { isKYCApproved, isKYCRequested } = useKYCStatus(address);
+  const { status, requestKYC, isPending } = useKYC();
   const [mounted, setMounted] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -114,16 +119,64 @@ function AccountDisplay() {
         {/* Dropdown Menu */}
         {isDropdownOpen && (
           <div 
-            className="absolute right-0 mt-2 w-48 rounded-lg border shadow-lg z-50"
+            className="absolute right-0 mt-2 w-56 rounded-lg border shadow-lg z-50"
             style={{ 
               backgroundColor: "var(--bg-surface)",
               borderColor: "var(--border-default)",
             }}
           >
+            {/* KYC Status */}
+            <div className="px-4 py-3 border-b" style={{ borderColor: "var(--border-dim)" }}>
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>KYC Status</span>
+              <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                {isOwner === true ? "Owner" : isKYCApproved === true ? "Verified" : isKYCRequested === true ? "Pending" : "Not Verified"}
+              </div>
+            </div>
+
+            {/* Request KYC Button - Only show for non-verified, non-owner users */}
+            {isOwner !== true && !isKYCApproved && (
+              <button
+                onClick={() => {
+                  requestKYC();
+                  setIsDropdownOpen(false);
+                }}
+                disabled={isPending}
+                className="flex items-center gap-3 w-full px-4 py-3 text-left transition-colors"
+                style={{ 
+                  color: isPending ? "var(--text-muted)" : "var(--accent)",
+                }}
+                onMouseEnter={(e) => {
+                  if (!isPending) {
+                    e.currentTarget.style.backgroundColor = "var(--bg-subtle)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "transparent";
+                }}
+              >
+                <svg 
+                  width="16" 
+                  height="16" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="2"
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                  <polyline points="9 12 12 15 16 10" />
+                </svg>
+                <span className="text-sm font-medium">
+                  {isPending ? "Processing..." : "Request KYC"}
+                </span>
+              </button>
+            )}
+
             {/* Copy Address Option */}
             <button
               onClick={handleCopyAddress}
-              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-colors first:rounded-t-lg"
+              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-colors"
               style={{ color: "var(--text-primary)" }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = "var(--bg-subtle)";
@@ -169,6 +222,37 @@ function AccountDisplay() {
                 </>
               )}
             </button>
+
+            {/* Admin Option - Only for owner */}
+            {isOwner && (
+              <Link
+                href="/admin"
+                onClick={() => setIsDropdownOpen(false)}
+                className="flex items-center gap-3 w-full px-4 py-3 text-left transition-colors"
+                style={{ color: "var(--text-primary)" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "var(--bg-subtle)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "transparent";
+                }}
+              >
+                <svg 
+                  width="16" 
+                  height="16" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="var(--text-secondary)" 
+                  strokeWidth="2"
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l.06-.06a1.65 1.65 0 0 0 1.82-.33 1.65 1.65 0 0 0 0-2.83 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0-.33-1.82 1.65 1.65 0 0 0-2.83 0 1.65 1.65 0 0 0 0 2.83l-.06.06a1.65 1.65 0 0 0-.33-1.82 1.65 1.65 0 0 0-2.83 0 1.65 1.65 0 0 0 0 2.83l.06.06a1.65 1.65 0 0 0 .33 1.82l-.06.06a2 2 0 0 1 0 2.83" />
+                </svg>
+                <span className="text-sm font-medium">Admin Panel</span>
+              </Link>
+            )}
 
             {/* Divider */}
             <div 
@@ -288,13 +372,12 @@ export function Header() {
             </div>
           </Link>
 
-          {/* Navigation - visible on all screens */}
+          {/* Navigation - Admin removed from here, now in dropdown */}
           <nav className="flex items-center gap-1">
             {[
               { href: "/", label: "Dashboard" },
               { href: "/disputes", label: "Disputes" },
               { href: "/receivables", label: "Receivables" },
-              { href: "/admin", label: "Admin" },
             ].map((item) => (
               <Link
                 key={item.href}
