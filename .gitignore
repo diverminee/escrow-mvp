@@ -33,3 +33,5 @@ web/.next/
 web/.env.local
 web/node_modules/
 .pnpm-store/
+
+cast-tests.sh
