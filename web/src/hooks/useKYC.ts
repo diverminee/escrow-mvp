@@ -6,6 +6,9 @@ import { useChainId } from "wagmi";
 
 export type KYCStatus = "verified" | "pending" | "not_verified";
 
+// ToS message that users sign for self-attestation
+export const TOS_MESSAGE = "I agree to the Credence Protocol Terms of Service and certify that I am not a citizen or resident of restricted jurisdictions.";
+
 export function useKYC() {
   const chainId = useChainId();
   const contract = getEscrowContract(chainId);
@@ -31,14 +34,25 @@ export function useKYC() {
     query: { enabled: !!contract?.address && !!userAddress },
   });
 
-  // Determine status
+  // Read ToS accepted status (for self-attestation)
+  const { data: tosAccepted, refetch: refetchTosAccepted } = useReadContract({
+    address: contract?.address,
+    abi: contract?.abi,
+    functionName: "tosAccepted",
+    args: userAddress ? [userAddress] : undefined,
+    query: { enabled: !!contract?.address && !!userAddress },
+  });
+
+  // Determine status - prioritize verified, then pending, then ToS accepted, then not verified
   const status: KYCStatus = kycApproved === true 
     ? "verified" 
     : kycRequested === true 
       ? "pending" 
-      : "not_verified";
+      : tosAccepted === true
+        ? "verified" // ToS accepted means KYC is auto-approved
+        : "not_verified";
 
-  // Request KYC approval (user calls this to start the process)
+  // Request KYC approval (legacy/manual flow - kept for backward compatibility)
   function requestKYC() {
     if (!contract.address) return;
     writeContract({
@@ -46,6 +60,18 @@ export function useKYC() {
       abi: contract.abi,
       functionName: "requestKYC",
       args: [],
+    });
+  }
+
+  // Self-attest via ToS signature - automatically approves KYC
+  // This is the new primary flow - no manual approval needed
+  function attestKYC(signature: `0x${string}`) {
+    if (!contract.address) return;
+    writeContract({
+      address: contract.address,
+      abi: contract.abi,
+      functionName: "attestKYC",
+      args: [signature],
     });
   }
 
@@ -84,6 +110,8 @@ export function useKYC() {
     // User functions
     status,
     requestKYC,
+    attestKYC,
+    tosAccepted: tosAccepted === true,
     
     // Admin functions
     approvedAddresses: (approvedAddresses as `0x${string}`[]) || [],
@@ -102,6 +130,7 @@ export function useKYC() {
     refetch: {
       approved: refetchApproved,
       requested: refetchRequested,
+      tosAccepted: refetchTosAccepted,
       approvedList: refetchApprovedList,
       pendingList: refetchPendingList,
     },
