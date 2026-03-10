@@ -43,6 +43,10 @@ abstract contract BaseEscrow is ReentrancyGuard, Pausable {
     EnumerableSet.AddressSet internal kycApprovedAddresses;
     EnumerableSet.AddressSet internal kycRequestedAddresses;
 
+    // ToS KYC tracking
+    mapping(address => string) public tosVersionSigned;
+    mapping(address => uint256) public tosAcceptedAt;
+
     // Token allowlist
     mapping(address => bool) public approvedTokens;
 
@@ -133,6 +137,9 @@ abstract contract BaseEscrow is ReentrancyGuard, Pausable {
     error TimelockNotExpired();
     error TimelockExecutionFailed();
     error ContractKYCNotAllowed();
+    error AlreadyKYCApproved();
+    error TokenNotApproved();
+    error InvalidTOSVersion();
 
     // ============ Events ============
     event EscrowCreated(
@@ -149,6 +156,7 @@ abstract contract BaseEscrow is ReentrancyGuard, Pausable {
     event EscrowRefunded(uint256 indexed escrowId, address indexed recipient, uint256 amount);
     event KYCStatusUpdated(address indexed user, bool status);
     event KYCRequested(address indexed user);
+    event TOSAccepted(address indexed user, string version, uint256 timestamp);
     event ApprovedTokenAdded(address indexed token);
     event ApprovedTokenRemoved(address indexed token);
     event OwnershipTransferred(address indexed oldOwner, address indexed newOwner);
@@ -278,16 +286,6 @@ abstract contract BaseEscrow is ReentrancyGuard, Pausable {
 
     // ============ Admin Functions ============
 
-    /// @notice Request KYC approval (user calls this to start the process)
-    function requestKYC() external {
-        require(!kycApproved[msg.sender], "Already KYC approved");
-        require(!kycRequested[msg.sender], "KYC already requested");
-        
-        kycRequested[msg.sender] = true;
-        kycRequestedAddresses.add(msg.sender);
-        emit KYCRequested(msg.sender);
-    }
-
     /// @notice Set KYC approval status for a single user
     /// @param _user Address to update
     /// @param _status True to approve, false to revoke
@@ -308,6 +306,66 @@ abstract contract BaseEscrow is ReentrancyGuard, Pausable {
         }
         
         emit KYCStatusUpdated(_user, _status);
+    }
+
+    /// @notice Request KYC approval (user calls this to start the process)
+    function requestKYC() external {
+        if (kycApproved[msg.sender]) revert AlreadyKYCApproved();
+        if (kycRequested[msg.sender]) revert AlreadyKYCApproved();
+        
+        kycRequested[msg.sender] = true;
+        kycRequestedAddresses.add(msg.sender);
+        emit KYCRequested(msg.sender);
+    }
+
+    /// @notice Approve KYC by recording ToS acceptance — called by owner after verifying signature off-chain
+    /// @param _user Address of the user who signed the ToS
+    /// @param _version Version string of the ToS document they signed (e.g. "1.0.0")
+    function recordTOSAcceptance(address _user, string calldata _version) external onlyOwner {
+        if (_user == address(0)) revert ZeroAddress();
+        if (bytes(_version).length == 0) revert InvalidTOSVersion();
+
+        tosVersionSigned[_user] = _version;
+        tosAcceptedAt[_user] = block.timestamp;
+
+        kycApproved[_user] = true;
+        kycApprovedAddresses.add(_user);
+
+        // Clear any pending request
+        if (kycRequested[_user]) {
+            kycRequested[_user] = false;
+            kycRequestedAddresses.remove(_user);
+        }
+
+        emit TOSAccepted(_user, _version, block.timestamp);
+        emit KYCStatusUpdated(_user, true);
+    }
+
+    /// @notice Batch version of recordTOSAcceptance for approving multiple users at once
+    /// @param _users Array of addresses
+    /// @param _version ToS version they all signed
+    function batchRecordTOSAcceptance(address[] calldata _users, string calldata _version) external onlyOwner {
+        if (_users.length > MAX_BATCH_KYC_SIZE) revert BatchSizeTooLarge();
+        if (bytes(_version).length == 0) revert InvalidTOSVersion();
+
+        for (uint256 i = 0; i < _users.length; i++) {
+            address user = _users[i];
+            if (user == address(0)) continue;
+
+            tosVersionSigned[user] = _version;
+            tosAcceptedAt[user] = block.timestamp;
+
+            kycApproved[user] = true;
+            kycApprovedAddresses.add(user);
+
+            if (kycRequested[user]) {
+                kycRequested[user] = false;
+                kycRequestedAddresses.remove(user);
+            }
+
+            emit TOSAccepted(user, _version, block.timestamp);
+            emit KYCStatusUpdated(user, true);
+        }
     }
 
     /// @notice Add a token to the approved allowlist
@@ -566,6 +624,10 @@ abstract contract BaseEscrow is ReentrancyGuard, Pausable {
         if (_arbiter == protocolArbiter) {
             revert ArbiterCannotBeProtocolArbiter();
         }
+
+        // Enforce token whitelist for ERC20 tokens
+        if (_token != address(0) && !approvedTokens[_token]) revert TokenNotApproved();
+
         if (!kycApproved[msg.sender]) revert NotKYCApproved();
         if (!kycApproved[_seller]) revert NotKYCApproved();
 
@@ -798,5 +860,21 @@ abstract contract BaseEscrow is ReentrancyGuard, Pausable {
     /// @return Number of pending requests
     function getPendingKYCRequestCount() external view returns (uint256) {
         return kycRequestedAddresses.length();
+    }
+
+    /// @notice Check if a user has signed a specific ToS version
+    /// @param _user Address to check
+    /// @param _version Version to check against
+    /// @return True if user signed that version
+    function hasSignedTOS(address _user, string calldata _version) external view returns (bool) {
+        return keccak256(bytes(tosVersionSigned[_user])) == keccak256(bytes(_version));
+    }
+
+    /// @notice Get full ToS acceptance info for a user
+    /// @param _user Address to look up
+    /// @return version The ToS version they signed (empty string if none)
+    /// @return acceptedAt Timestamp of acceptance (0 if none)
+    function getTOSAcceptance(address _user) external view returns (string memory version, uint256 acceptedAt) {
+        return (tosVersionSigned[_user], tosAcceptedAt[_user]);
     }
 }
