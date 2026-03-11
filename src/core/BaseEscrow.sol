@@ -75,10 +75,12 @@ abstract contract BaseEscrow is ReentrancyGuard, Pausable {
     uint256 public constant MAX_COLLATERAL_BPS = 5000;
 
     // ============ Configurable Limits ============
-    uint256 public minEscrowAmount = 0.01 ether;
-    uint256 public launchLimit = 50_000e18;
-    uint256 public growthLimit = 500_000e18;
-    uint256 public matureLimit = 10_000_000e18;
+    // BUG FIX: Set to 1 raw unit, rely on setTokenMinAmount for real minimums per token
+    uint256 public minEscrowAmount = 1;
+    // BUG FIX: Use 6-decimal units matching USDC for practical tier limits
+    uint256 public launchLimit = 50_000_000_000;      // $50,000 USDC
+    uint256 public growthLimit = 500_000_000_000;     // $500,000 USDC
+    uint256 public matureLimit = 10_000_000_000_000;  // $10,000,000 USDC
 
     // ============ SECURITY FIX: Additional Constants ============
     /// @notice Maximum batch size for KYC operations
@@ -87,6 +89,14 @@ abstract contract BaseEscrow is ReentrancyGuard, Pausable {
     uint256 public constant TIMELOCK_DELAY = 48 hours;
     /// @notice Minimum fee amount to prevent dust attacks
     uint256 public constant MIN_FEE_AMOUNT = 0.0001 ether;
+
+    // ============ ToS Self-Attestation Constants ============
+    /// @notice ToS message that users sign for self-attestation KYC
+    string public constant TOS_MESSAGE = "I agree to the Credence Protocol Terms of Service and certify that I am not a citizen or resident of restricted jurisdictions.";
+    /// @notice Hash of the ToS message for signature verification
+    bytes32 public constant TOS_MESSAGE_HASH = keccak256(bytes(TOS_MESSAGE));
+    /// @notice Current ToS version for self-attestation
+    string public constant TOS_VERSION = "1.0.0";
 
     // ============ SECURITY FIX: Timelock State ============
     /// @notice Pending fee recipient for timelock
@@ -366,6 +376,61 @@ abstract contract BaseEscrow is ReentrancyGuard, Pausable {
             emit TOSAccepted(user, _version, block.timestamp);
             emit KYCStatusUpdated(user, true);
         }
+    }
+
+    /// @notice Self-attest KYC by signing the ToS message
+    /// @dev Users sign the ToS message off-chain, then call this with their signature
+    ///      This verifies the signature and instantly approves their KYC
+    /// @param _signature The signature from signing TOS_MESSAGE
+    function attestKYC(bytes calldata _signature) external {
+        // Check if already approved
+        if (kycApproved[msg.sender]) revert AlreadyKYCApproved();
+
+        // Verify signature length (r, s, v = 65 bytes)
+        if (_signature.length != 65) revert InvalidTOSVersion();
+
+        // Verify signature matches the ToS message hash
+        // The user must sign the TOS_MESSAGE and we verify it matches
+        bytes32 messageHash = keccak256(abi.encodePacked(TOS_MESSAGE_HASH, msg.sender));
+        bytes32 ethSignedMessageHash = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash)
+        );
+
+        // Recover signers from signature (r, s, v)
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+
+        // Use assembly to extract signature components from calldata
+        assembly {
+            let data := _signature.offset
+            r := calldataload(data)
+            s := calldataload(add(data, 32))
+            v := byte(0, calldataload(add(data, 64)))
+        }
+
+        address signer = ecrecover(ethSignedMessageHash, v, r, s);
+
+        // The signature must be from the caller (they signed the message for themselves)
+        if (signer == address(0)) revert InvalidTOSVersion();
+        if (signer != msg.sender) revert InvalidTOSVersion();
+
+        // Record ToS acceptance
+        tosVersionSigned[msg.sender] = TOS_VERSION;
+        tosAcceptedAt[msg.sender] = block.timestamp;
+
+        // Approve KYC
+        kycApproved[msg.sender] = true;
+        kycApprovedAddresses.add(msg.sender);
+
+        // Clear any pending request
+        if (kycRequested[msg.sender]) {
+            kycRequested[msg.sender] = false;
+            kycRequestedAddresses.remove(msg.sender);
+        }
+
+        emit TOSAccepted(msg.sender, TOS_VERSION, block.timestamp);
+        emit KYCStatusUpdated(msg.sender, true);
     }
 
     /// @notice Add a token to the approved allowlist
@@ -706,8 +771,10 @@ abstract contract BaseEscrow is ReentrancyGuard, Pausable {
 
         _settleReceivable(_escrowId);
 
+        // BUG FIX: Use fee snapshot from escrow creation instead of live feeRecipient
+        address _feeRecipient = _getFeeRecipientForEscrow(_escrowId);
         _transferFunds(txn.token, _recipient, recipientAmount);
-        _transferFunds(txn.token, feeRecipient, feeAmount);
+        _transferFunds(txn.token, _feeRecipient, feeAmount);
 
         emit EscrowSettled(_escrowId, _recipient, recipientAmount, feeAmount);
     }
@@ -868,6 +935,13 @@ abstract contract BaseEscrow is ReentrancyGuard, Pausable {
     /// @return True if user signed that version
     function hasSignedTOS(address _user, string calldata _version) external view returns (bool) {
         return keccak256(bytes(tosVersionSigned[_user])) == keccak256(bytes(_version));
+    }
+
+    /// @notice Check if a user has accepted the ToS (for frontend compatibility)
+    /// @param _user Address to check
+    /// @return True if user has accepted ToS
+    function tosAccepted(address _user) external view returns (bool) {
+        return tosAcceptedAt[_user] > 0;
     }
 
     /// @notice Get full ToS acceptance info for a user
