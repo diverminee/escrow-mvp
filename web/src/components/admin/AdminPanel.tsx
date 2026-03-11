@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useAccount, useChainId } from "wagmi";
 import { parseEther } from "viem";
 import { useAdmin, useIsOwner, useContractState } from "@/hooks/useAdmin";
+import { useKYC } from "@/hooks/useKYC";
 import { AddressDisplay } from "@/components/shared/AddressDisplay";
 
 const TIER_NAMES = ["TESTNET", "LAUNCH", "GROWTH", "MATURITY"];
@@ -15,13 +16,16 @@ export function AdminPanel() {
   const isOwner = useIsOwner();
   const { isPaused, owner, tier } = useContractState();
   const admin = useAdmin();
+  const kyc = useKYC();
 
   // All state hooks must be at the top, before any early returns
   const [activeTab, setActiveTab] = useState<"KYC" | "tokens" | "tier" | "settings" | "emergency">("KYC");
 
   // KYC State
-  const [kycAddress, setKycAddress] = useState("");
-  const [kycBatch, setKycBatch] = useState("");
+  const [kycSubTab, setKycSubTab] = useState<"verified" | "manual">("verified");
+  const [manualAddress, setManualAddress] = useState("");
+  const [manualBatch, setManualBatch] = useState("");
+  const [revokingAddress, setRevokingAddress] = useState<string | null>(null);
 
   // Token State
   const [tokenAddress, setTokenAddress] = useState("");
@@ -133,66 +137,168 @@ export function AdminPanel() {
         {/* KYC Tab */}
         {activeTab === "KYC" && (
           <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-white">KYC Management</h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm text-[#D9AA90]">Single Address</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={kycAddress}
-                    onChange={(e) => setKycAddress(e.target.value)}
-                    placeholder="0x..."
-                    className="flex-1 rounded-lg border border-[#154A99] bg-[#07203F] px-3 py-2 text-white"
-                  />
-                  <button
-                    onClick={() => {
-                      admin.setKYCStatus(kycAddress as `0x${string}`, true);
-                      setKycAddress("");
-                    }}
-                    disabled={!kycAddress || admin.isPending}
-                    className="rounded-lg bg-[#22C55E] px-4 py-2 text-white disabled:opacity-50"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => {
-                      admin.setKYCStatus(kycAddress as `0x${string}`, false);
-                      setKycAddress("");
-                    }}
-                    disabled={!kycAddress || admin.isPending}
-                    className="rounded-lg bg-[#A65E46] px-4 py-2 text-white disabled:opacity-50"
-                  >
-                    Revoke
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm text-[#D9AA90]">Batch Addresses (comma-separated)</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={kycBatch}
-                    onChange={(e) => setKycBatch(e.target.value)}
-                    placeholder="0x..., 0x..., 0x..."
-                    className="flex-1 rounded-lg border border-[#154A99] bg-[#07203F] px-3 py-2 text-white"
-                  />
-                  <button
-                    onClick={() => {
-                      const addresses = kycBatch.split(",").map((a) => a.trim()).filter(Boolean);
-                      admin.batchSetKYCStatus(addresses as `0x${string}`[], true);
-                      setKycBatch("");
-                    }}
-                    disabled={!kycBatch || admin.isPending}
-                    className="rounded-lg bg-[#22C55E] px-4 py-2 text-white disabled:opacity-50"
-                  >
-                    Batch Approve
-                  </button>
-                </div>
-              </div>
+            {/* Header row */}
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white">KYC Management</h3>
+              <span className="text-xs text-[#A68A7A]">
+                {kyc.approvedCount} address{kyc.approvedCount !== 1 ? "es" : ""} verified
+              </span>
             </div>
+
+            {/* Sub-tabs */}
+            <div className="flex gap-1 rounded-lg border border-[#154A99] bg-[#07203F]/50 p-1">
+              <button
+                onClick={() => setKycSubTab("verified")}
+                className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition ${
+                  kycSubTab === "verified"
+                    ? "bg-[#1A5AB8] text-white"
+                    : "text-[#A68A7A] hover:text-white"
+                }`}
+              >
+                Verified ({kyc.approvedCount})
+              </button>
+              <button
+                onClick={() => setKycSubTab("manual")}
+                className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition ${
+                  kycSubTab === "manual"
+                    ? "bg-[#1A5AB8] text-white"
+                    : "text-[#A68A7A] hover:text-white"
+                }`}
+              >
+                Manual Override
+              </button>
+            </div>
+
+            {/* Verified List */}
+            {kycSubTab === "verified" && (
+              <div className="space-y-3">
+                <p className="text-xs text-[#A68A7A]">
+                  All addresses with active KYC approval. Users self-verify by signing the Terms of Service in the header. Revoke if a wallet is flagged or compromised.
+                </p>
+
+                {kyc.approvedAddresses.length === 0 ? (
+                  <div className="rounded-lg border border-[#154A99] bg-[#07203F]/30 p-8 text-center text-sm text-[#A68A7A]">
+                    No verified addresses yet.
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-[#154A99] overflow-hidden">
+                    <div className="grid grid-cols-[1fr_auto] gap-4 border-b border-[#154A99] bg-[#07203F]/50 px-4 py-2">
+                      <span className="text-xs font-medium uppercase tracking-wider text-[#A68A7A]">Address</span>
+                      <span className="text-xs font-medium uppercase tracking-wider text-[#A68A7A]">Action</span>
+                    </div>
+                    <div className="divide-y divide-[#154A99]">
+                      {kyc.approvedAddresses.map((addr) => (
+                        <div key={addr} className="grid grid-cols-[1fr_auto] gap-4 items-center px-4 py-3">
+                          <AddressDisplay address={addr as `0x${string}`} />
+                          <button
+                            onClick={() => {
+                              setRevokingAddress(addr);
+                              admin.setKYCStatus(addr as `0x${string}`, false);
+                            }}
+                            disabled={admin.isPending && revokingAddress === addr}
+                            className="rounded-lg border border-[#A65E46] px-3 py-1.5 text-xs font-medium text-[#A65E46] transition hover:bg-[#A65E46] hover:text-white disabled:opacity-50"
+                          >
+                            {admin.isPending && revokingAddress === addr ? "Revoking..." : "Revoke"}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => kyc.refetch.approvedList()}
+                  className="text-xs text-[#A68A7A] hover:text-white transition"
+                >
+                  ↻ Refresh list
+                </button>
+              </div>
+            )}
+
+            {/* Manual Override */}
+            {kycSubTab === "manual" && (
+              <div className="space-y-6">
+                <p className="text-xs text-[#A68A7A]">
+                  Directly approve addresses without requiring them to sign the ToS. Use for test wallets, institutional users, or emergency access.
+                </p>
+
+                {/* Single address */}
+                <div className="space-y-2">
+                  <label className="block text-sm text-[#D9AA90]">Single Address</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={manualAddress}
+                      onChange={(e) => setManualAddress(e.target.value)}
+                      placeholder="0x..."
+                      className="flex-1 rounded-lg border border-[#154A99] bg-[#07203F] px-3 py-2 text-white font-mono text-sm"
+                    />
+                    <button
+                      onClick={() => {
+                        admin.setKYCStatus(manualAddress as `0x${string}`, true);
+                        setManualAddress("");
+                      }}
+                      disabled={!manualAddress || admin.isPending}
+                      className="rounded-lg bg-[#22C55E] px-4 py-2 text-sm text-white disabled:opacity-50"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => {
+                        admin.setKYCStatus(manualAddress as `0x${string}`, false);
+                        setManualAddress("");
+                      }}
+                      disabled={!manualAddress || admin.isPending}
+                      className="rounded-lg bg-[#A65E46] px-4 py-2 text-sm text-white disabled:opacity-50"
+                    >
+                      Revoke
+                    </button>
+                  </div>
+                </div>
+
+                {/* Batch */}
+                <div className="space-y-2">
+                  <label className="block text-sm text-[#D9AA90]">Batch Approve (comma-separated)</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={manualBatch}
+                      onChange={(e) => setManualBatch(e.target.value)}
+                      placeholder="0x..., 0x..., 0x..."
+                      className="flex-1 rounded-lg border border-[#154A99] bg-[#07203F] px-3 py-2 text-white font-mono text-sm"
+                    />
+                    <button
+                      onClick={() => {
+                        const addresses = manualBatch
+                          .split(",")
+                          .map((a) => a.trim())
+                          .filter(Boolean);
+                        admin.batchSetKYCStatus(addresses as `0x${string}`[], true);
+                        setManualBatch("");
+                      }}
+                      disabled={!manualBatch || admin.isPending}
+                      className="rounded-lg bg-[#1A5AB8] px-4 py-2 text-sm text-white disabled:opacity-50"
+                    >
+                      Batch Approve
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Transaction feedback */}
+            {admin.isPending && (
+              <p className="text-xs text-[#A68A7A]">Waiting for signature...</p>
+            )}
+            {admin.isConfirming && (
+              <p className="text-xs text-[#A68A7A]">Confirming transaction...</p>
+            )}
+            {admin.isSuccess && (
+              <p className="text-xs text-green-400">Transaction confirmed.</p>
+            )}
+            {admin.error && (
+              <p className="text-xs text-red-400">Error: {admin.error.message}</p>
+            )}
           </div>
         )}
 
