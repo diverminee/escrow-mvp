@@ -210,10 +210,16 @@ abstract contract DisputeEscrow is BaseEscrow {
         disputesLost[txn.buyer]++;
         disputesLost[txn.seller]++;
 
+        // BUG FIX: Settle receivable NFT before transferring funds
+        _settleReceivable(_escrowId);
+
+        // BUG FIX: Use fee snapshot from escrow creation instead of live feeRecipient
+        address _feeRecipient = _getFeeRecipientForEscrow(_escrowId);
+
         // Transfer funds
         _transferFunds(txn.token, txn.buyer, buyerAmount);
         _transferFunds(txn.token, txn.seller, sellerAmount);
-        _transferFunds(txn.token, feeRecipient, feeAmount);
+        _transferFunds(txn.token, _feeRecipient, feeAmount);
 
         emit DisputeResolved(_escrowId, 3, msg.sender, block.timestamp); // 3 = split ruling
     }
@@ -250,10 +256,16 @@ abstract contract DisputeEscrow is BaseEscrow {
         disputesLost[txn.buyer]++;
         disputesLost[txn.seller]++;
 
+        // BUG FIX: Settle receivable NFT before transferring funds
+        _settleReceivable(_escrowId);
+
+        // BUG FIX: Use fee snapshot from escrow creation instead of live feeRecipient
+        address _feeRecipient = _getFeeRecipientForEscrow(_escrowId);
+
         // Transfer funds
         _transferFunds(txn.token, txn.buyer, buyerAmount);
         _transferFunds(txn.token, txn.seller, sellerAmount);
-        _transferFunds(txn.token, feeRecipient, feeAmount);
+        _transferFunds(txn.token, _feeRecipient, feeAmount);
 
         emit EscalationResolved(_escrowId, 3, block.timestamp);
     }
