@@ -116,6 +116,7 @@ contract ProtocolArbiterMultisigTest is EscrowTestBase {
         (
             ,
             ,
+            ,
             uint256 createdAt,
             bool executed,
             uint256 approvalCount,
@@ -187,7 +188,7 @@ contract ProtocolArbiterMultisigTest is EscrowTestBase {
         vm.prank(signer1);
         multisig.revokeApproval(proposalId);
 
-        (, , , , uint256 approvalCount, , ) = multisig.proposals(proposalId);
+        (, , , , , uint256 approvalCount, , ) = multisig.proposals(proposalId);
         assertEq(approvalCount, 0);
         assertFalse(multisig.hasApproved(proposalId, signer1));
     }
@@ -367,7 +368,7 @@ contract ProtocolArbiterMultisigTest is EscrowTestBase {
         uint256 resId = multisig.proposeResolution(escrowId, 1);
 
         // Verify proposal was created
-        (uint256 eid, uint8 ruling, , , , , ) = multisig.proposals(resId);
+        (uint256 eid, uint8 ruling, , , , , , ) = multisig.proposals(resId);
         assertEq(eid, escrowId);
         assertEq(ruling, 1);
     }
