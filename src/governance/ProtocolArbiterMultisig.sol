@@ -62,6 +62,7 @@ contract ProtocolArbiterMultisig {
     struct Proposal {
         uint256 escrowId;
         uint8 ruling;
+        uint256 splitPercentage; // BUG FIX: For split rulings (10-90), 0 = no split
         uint256 createdAt;
         bool executed;
         uint256 approvalCount;
@@ -106,6 +107,34 @@ contract ProtocolArbiterMultisig {
     }
 
     // ============ External Functions ============
+
+    /// @notice Propose a split resolution for an escalated dispute (BUG FIX)
+    /// @param escrowId The escrow ID to resolve
+    /// @param splitPercentage The percentage for buyer (10-90), remainder to seller
+    /// @return proposalId The created proposal ID
+    function proposeResolutionWithSplit(
+        uint256 escrowId,
+        uint256 splitPercentage
+    ) external onlySigner returns (uint256 proposalId) {
+        proposalId = nextProposalId++;
+        Proposal storage p = proposals[proposalId];
+        p.escrowId = escrowId;
+        p.ruling = 3; // 3 = split ruling
+        p.splitPercentage = splitPercentage;
+        p.createdAt = block.timestamp;
+
+        // Proposer automatically approves
+        p.approvals[msg.sender] = true;
+        p.approvalCount = 1;
+
+        emit ResolutionProposed(proposalId, escrowId, 3, msg.sender);
+        emit ResolutionApproved(proposalId, msg.sender);
+
+        // Check if threshold already met
+        if (p.approvalCount >= threshold) {
+            _executeProposal(proposalId);
+        }
+    }
 
     /// @notice Propose a resolution for an escalated dispute
     /// @param escrowId The escrow ID to resolve
@@ -259,8 +288,19 @@ contract ProtocolArbiterMultisig {
             (bool success, ) = p.target.call(p.callData);
             require(success, "governance action failed");
             emit GovernanceActionExecuted(proposalId, p.target);
+        } else if (p.ruling == 3 && p.splitPercentage > 0) {
+            // BUG FIX: Split ruling - call resolveEscalationWithSplit
+            (bool success, ) = escrow.call(
+                abi.encodeWithSignature(
+                    "resolveEscalationWithSplit(uint256,uint256)",
+                    p.escrowId,
+                    p.splitPercentage
+                )
+            );
+            require(success, "resolveEscalationWithSplit failed");
+            emit ResolutionExecuted(proposalId, p.escrowId, 3);
         } else {
-            // Legacy resolution path
+            // Legacy resolution path (ruling 1 or 2)
             (bool success, ) = escrow.call(
                 abi.encodeWithSignature(
                     "resolveEscalation(uint256,uint8)",
